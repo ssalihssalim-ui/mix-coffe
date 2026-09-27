@@ -1,13 +1,13 @@
-// ==================== FIREBASE CONFIGURATION - ALMA COFFEE SHOP ====================
-// 🔥 NOUVEAU PROJET : mixmax-kenitra
+// ==================== FIREBASE CONFIGURATION - MIX COFFE ====================
+// 🔥 PROJET : mix-coffe
 
 const firebaseConfig = {
-    apiKey: "AIzaSyBC-k40GID3VsUysUE1FY5AnCwwIt721wc",
-    authDomain: "mixmax-kenitra.firebaseapp.com",
-    projectId: "mixmax-kenitra",
-    storageBucket: "mixmax-kenitra.firebasestorage.app",
-    messagingSenderId: "226043910414",
-    appId: "1:226043910414:web:3ec6a43e47dbcb37f8df5f"
+    apiKey: "AIzaSyCTjPYtuLYieTgadCbtrqIhjLEoC64FwBA",
+    authDomain: "mix-coffe.firebaseapp.com",
+    projectId: "mix-coffe",
+    storageBucket: "mix-coffe.firebasestorage.app",
+    messagingSenderId: "838187722029",
+    appId: "1:838187722029:web:4f3a10dd7bb02fdfdc1fa4"
 };
 
 // Initialisation Firebase (version compat)
@@ -25,6 +25,6 @@ db.enablePersistence()
     .then(() => console.log('📱 Mode hors ligne activé'))
     .catch(err => console.warn('⚠️ Persistance désactivée:', err));
 
-console.log('☕ Alma Coffee Shop - Firebase OK');
+console.log('☕ Mix Coffe - Firebase OK');
 console.log('✓ Projet:', firebaseConfig.projectId);
 console.log('✓ Auth Domain:', firebaseConfig.authDomain);
