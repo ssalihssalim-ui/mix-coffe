@@ -1,4 +1,4 @@
-// ==================== AUTH.JS - ALMA COFFEE SHOP ====================
+// ==================== AUTH.JS - E-SOLUTION POS ====================
 var currentUser = null;
 var currentUserData = null;
 
@@ -68,4 +68,4 @@ function showLogin() { document.getElementById('loginContainer').classList.remov
 function showRegister() { document.getElementById('loginContainer').classList.add('hidden'); document.getElementById('registerContainer').classList.remove('hidden'); hideLoginError(); }
 function showAuthPage() { document.getElementById('authPage').classList.remove('hidden'); document.getElementById('dashboardPage').classList.add('hidden'); document.getElementById('clientPage').classList.add('hidden'); }
 
-console.log('☕ Alma Coffee Shop - Auth JS OK');
+console.log('🏪 E-SOLUTION POS - Auth JS OK');
