@@ -1,9 +1,9 @@
-// ==================== SERVICE WORKER - MIXMAX MINIMARKET ====================
+// ==================== SERVICE WORKER - E-SOLUTION POS ====================
 // Version avec gestion PWA, cache, et reconnaissance vocale
 
-const CACHE_NAME = 'mixmax-minimarket-v2';
-const STATIC_CACHE = 'mixmax-minimarket-static-v2';
-const DYNAMIC_CACHE = 'mixmax-minimarket-dynamic-v2';
+const CACHE_NAME = 'esolution-pos-v1';
+const STATIC_CACHE = 'esolution-pos-static-v1';
+const DYNAMIC_CACHE = 'esolution-pos-dynamic-v1';
 
 const STATIC_FILES = [
   '/',
@@ -27,7 +27,7 @@ const STATIC_FILES = [
 
 // ==================== INSTALLATION ====================
 self.addEventListener('install', event => {
-  console.log('📦 Mixmax - Service Worker Installation...');
+  console.log('📦 E-SOLUTION POS - Service Worker Installation...');
   event.waitUntil(
     caches.open(STATIC_CACHE).then(cache => {
       console.log('📦 Mise en cache des fichiers statiques...');
@@ -41,7 +41,7 @@ self.addEventListener('install', event => {
 
 // ==================== ACTIVATION ====================
 self.addEventListener('activate', event => {
-  console.log('⚡ Mixmax - Service Worker Activation...');
+  console.log('⚡ E-SOLUTION POS - Service Worker Activation...');
   event.waitUntil(
     caches.keys().then(keys => {
       return Promise.all(
@@ -145,7 +145,7 @@ self.addEventListener('fetch', event => {
             <head>
               <meta charset="UTF-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Hors ligne - Mixmax</title>
+              <title>Hors ligne - E-SOLUTION POS</title>
               <style>
                 body {
                   font-family: 'Inter', -apple-system, sans-serif;
@@ -220,4 +220,4 @@ self.addEventListener('message', event => {
   }
 });
 
-console.log('🛒 Mixmax Minimarket - Service Worker OK');
+console.log('🏪 E-SOLUTION POS - Service Worker OK');
