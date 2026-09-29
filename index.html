@@ -26,6 +26,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
+
 <!-- ==================== AUTH PAGE ==================== -->
 <div id="authPage" class="login-wrapper">
 <div class="login-container" id="loginContainer">
@@ -44,6 +45,7 @@
 <div class="register-link">Pas de compte ? <strong onclick="showRegister()">Créer un compte</strong></div>
 </div>
 </div>
+
 <div class="register-container hidden" id="registerContainer">
 <div class="register-brand">
 <div class="brand-icon"><img src="logo.png" alt="E-SOLUTION POS" class="brand-logo" onerror="this.style.display='none';this.parentElement.innerHTML='<i class=\'fas fa-store\' style=\'font-size:50px;color:#14B8A6;\'></i>';"></div>
@@ -150,15 +152,15 @@ Contenu du modal
 </div>
 </div>
 
-<!-- ==================== SCRIPTS (ORDRE CORRIGÉ POUR PAGINATION) ==================== -->
+<!-- ==================== SCRIPTS ==================== -->
 <script src="db-cache.js"></script>
 <script src="firebase-config.js"></script>
 <script src="auth.js"></script>
-<script src="admin-crud.js"></script> <!-- ✅ CHARGÉ AVANT script.js -->
-<script src="admin-ventes.js"></script> <!-- ✅ CHARGÉ AVANT script.js -->
-<script src="admin-credits.js"></script> <!-- ✅ CHARGÉ AVANT script.js -->
-<script src="admin.js"></script> <!-- ✅ CHARGÉ AVANT script.js -->
-<script src="script.js"></script> <!-- ✅ script.js APRÈS les autres -->
+<script src="admin-crud.js"></script>
+<script src="admin-ventes.js"></script>
+<script src="admin-credits.js"></script>
+<script src="admin.js"></script>
+<script src="script.js"></script>
 <script src="pos.js"></script>
 <script src="client.js"></script>
 <script src="menutactile.js"></script>
@@ -172,7 +174,7 @@ if ('serviceWorker' in navigator) {
 navigator.serviceWorker.register('sw.js').then(reg => console.log('SW ✓', reg)).catch(err => console.error('SW ✗', err));
 }
 
-// ✅ AJOUT : Sauvegarde automatique au chargement de l'application
+// Sauvegarde automatique au chargement de l'application
 window.addEventListener('load', function() {
 setTimeout(function() {
 if (typeof CacheDB !== 'undefined' && CacheDB.saveAll) {
