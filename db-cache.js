@@ -1,5 +1,5 @@
 // ==================== INDEXEDDB CACHE + PENDING OPERATIONS ====================
-const DB_NAME = 'AlmaCoffeeDB';
+const DB_NAME = 'ESolutionPOSDB';
 const DB_VERSION = 1;
 const CACHE_STORE = 'firestore_cache';
 const PENDING_STORE = 'pending_operations';
@@ -231,4 +231,4 @@ window.CacheDB = {
     isOnline: () => navigator.onLine
 };
 
-console.log('☕ Alma Coffee Shop - Cache DB OK');
+console.log('🏪 E-SOLUTION POS - Cache DB OK');
