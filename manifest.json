@@ -1,7 +1,7 @@
 {
-  "name": "Mixmax Minimarket",
-  "short_name": "Mixmax Market",
-  "description": "Système de gestion pour minimarket",
+  "name": "E-SOLUTION POS",
+  "short_name": "E-SOLUTION POS",
+  "description": "Système de gestion E-SOLUTION POS",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
