@@ -1,9 +1,9 @@
 // ==================== SERVICE WORKER - E-SOLUTION POS ====================
 // Version avec gestion PWA, cache, et reconnaissance vocale
 
-const CACHE_NAME = 'esolution-pos-v1';
-const STATIC_CACHE = 'esolution-pos-static-v1';
-const DYNAMIC_CACHE = 'esolution-pos-dynamic-v1';
+const CACHE_NAME = 'esolution-pos-v2';
+const STATIC_CACHE = 'esolution-pos-static-v2';
+const DYNAMIC_CACHE = 'esolution-pos-dynamic-v2';
 
 const STATIC_FILES = [
   '/',
