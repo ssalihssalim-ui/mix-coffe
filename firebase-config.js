@@ -1,5 +1,5 @@
-// ==================== FIREBASE CONFIGURATION - MIX COFFE ====================
-// 🔥 PROJET : mix-coffe
+// ==================== FIREBASE CONFIGURATION - E-SOLUTION POS ====================
+// 🔥 PROJET : e-solution-pos (nom d'affichage — ID technique Firebase inchangé)
 
 const firebaseConfig = {
     apiKey: "AIzaSyCTjPYtuLYieTgadCbtrqIhjLEoC64FwBA",
@@ -25,6 +25,6 @@ db.enablePersistence()
     .then(() => console.log('📱 Mode hors ligne activé'))
     .catch(err => console.warn('⚠️ Persistance désactivée:', err));
 
-console.log('☕ Mix Coffe - Firebase OK');
+console.log('🏪 E-SOLUTION POS - Firebase OK');
 console.log('✓ Projet:', firebaseConfig.projectId);
 console.log('✓ Auth Domain:', firebaseConfig.authDomain);
