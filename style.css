@@ -162,9 +162,10 @@ position: relative;
 overflow: hidden;
 }
 
+/* ✅ MODIFIÉ : .brand-icon agrandi de 100px → 200px */
 .brand-icon {
-width: 100px;
-height: 100px;
+width: 200px;
+height: 200px;
 background: linear-gradient(135deg, var(--gray-800), var(--black));
 border-radius: 50%;
 display: flex;
@@ -2846,5 +2847,13 @@ opacity: 1 !important;
 @media(max-width: 768px) {
     .client-sidebar {
         width: 320px !important;
+    }
+}
+
+/* ==================== LOGIN / REGISTER - LOGO AGRANDI MOBILE ==================== */
+@media (max-width: 480px) {
+    .brand-icon {
+        width: 150px !important;
+        height: 150px !important;
     }
 }
