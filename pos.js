@@ -20,6 +20,7 @@
 // ✅ BARRE CATÉGORIES SLIDE SUPPRIMÉE DÉFINITIVEMENT
 // ✅ BOUTONS TABLES/EN LIGNE MASQUÉS POUR LE CLIENT
 // ⚡ OPTIMISATIONS : cache recherche + content-visibility + batch 30 + debounce 80ms
+// 🎨 DESIGN : couleurs vert vif #00C853 (cohérent avec style.css)
 
 var posCart = [];
 var posStep = 1;
@@ -59,32 +60,36 @@ var posLastRenderTime = 0;
 var isFinalizing = false;
 
 var posProductOffset = 0;
-var posProductBatchSize = 30;   // ⚡ 50 → 30
+var posProductBatchSize = 30;
 var posHasMoreProducts = false;
 
 var clientCreditsCache = {};
 var clientSearchTimeout = null;
 
-// ⚡ CACHE DE RECHERCHE PRODUIT (partagé avec pos-audio.js)
 if (typeof window.posSearchCache === 'undefined') {
     window.posSearchCache = {};
 }
 var posSearchCache = window.posSearchCache;
 
-// ✅ MODE CATÉGORIES / PRODUITS
 var posViewMode = 'categories';
 var posSelectedCategoryForView = null;
 
-// ==================== MULTI-PANIERS AVEC SAUVEGARDE COMPLÈTE ====================
 var posMultiCarts = {};
 var posCurrentCartId = 'panier1';
 var posMultiCartCounter = 1;
 
-// ✅ STOCKAGE DES DONNÉES DE CHAQUE PANIER (client, table, paiement, remise, montant donné)
 var posMultiPaniersData = {};
 
-// ✅ LIMITE MAXIMALE DE PANIERS
 var MAX_PANIERS = 5;
+
+// 🎨 COULEURS CENTRALISÉES (vert vif #00C853)
+var POS_PRIMARY = '#00C853';
+var POS_PRIMARY_DARK = '#00A344';
+var POS_GRADIENT = 'linear-gradient(135deg, #00C853 0%, #00B894 100%)';
+var POS_GRADIENT_HOVER = 'linear-gradient(135deg, #00B894 0%, #00A344 100%)';
+var POS_SHADOW = '0 4px 14px rgba(0, 200, 83, 0.30)';
+var POS_SHADOW_HOVER = '0 8px 24px rgba(0, 200, 83, 0.40)';
+var POS_LIGHT_BG = '#f0fdf4';
 
 // ======================================================
 // ✅ FONCTION DE FORCE POUR METTRE À JOUR LE CLIENT
@@ -187,9 +192,8 @@ btn.style.display = visible ? 'block' : 'none';
 }
 }
 
-// ==================== MULTI-PANIERS - FONCTIONS AVEC SAUVEGARDE COMPLÈTE ====================
+// ==================== MULTI-PANIERS ====================
 
-// ✅ SAUVEGARDER LES DONNÉES D'UN PANIER (client, table, paiement, etc.)
 function posSauvegarderDonneesPanier(cartId) {
     posMultiPaniersData[cartId] = {
         client: posCurrentClient ? { 
@@ -206,7 +210,6 @@ function posSauvegarderDonneesPanier(cartId) {
     };
 }
 
-// ✅ RESTAURER LES DONNÉES D'UN PANIER
 function posRestaurerDonneesPanier(cartId) {
     if (posMultiPaniersData[cartId]) {
         var data = posMultiPaniersData[cartId];
@@ -227,7 +230,6 @@ function posRestaurerDonneesPanier(cartId) {
     return false;
 }
 
-// ✅ CHARGER TOUTES LES DONNÉES DES PANIERS DEPUIS localStorage
 function posChargerToutesDonneesPaniers() {
     try {
         var allData = localStorage.getItem('posMultiPaniersData');
@@ -317,7 +319,6 @@ function posSaveMultiCarts() {
     } catch(e) { console.warn('⚠️ Erreur sauvegarde multi-paniers:', e); }
 }
 
-// ✅ RÉORGANISER LES NUMÉROS DES PANIERS (1 À 5)
 function posReorganiserNumerosPaniers() {
     var cartKeys = Object.keys(posMultiCarts);
     if (cartKeys.length === 0) {
@@ -357,7 +358,6 @@ function posReorganiserNumerosPaniers() {
     posSaveMultiCarts();
 }
 
-// ✅ CRÉER UN NOUVEAU PANIER - AVEC LIMITE DE 5 ET RÉUTILISATION DES NUMÉROS
 function posCreateNewCart() {
     posMultiCarts[posCurrentCartId] = posCart.slice();
     posSauvegarderDonneesPanier(posCurrentCartId);
@@ -410,7 +410,6 @@ function posCreateNewCart() {
     return newCartId;
 }
 
-// ✅ CHANGER DE PANIER - VERSION FLUIDE CORRIGÉE
 function posSwitchToCart(cartId) {
     if (!posMultiCarts[cartId]) { 
         console.warn('⚠️ Panier inexistant:', cartId); 
@@ -460,7 +459,6 @@ function posSwitchToCart(cartId) {
     console.log('🔄 Basculé vers:', cartId, 'articles:', posCart.length);
 }
 
-// ✅ SUPPRIMER UN PANIER - AVEC RÉORGANISATION DES NUMÉROS
 function posDeleteCart(cartId) {
     console.log('🗑️ Tentative de suppression du panier:', cartId);
     
@@ -527,7 +525,6 @@ function posDeleteCart(cartId) {
     console.log('✅ Panier supprimé:', cartId, 'Paniers restants:', Object.keys(posMultiCarts).length);
 }
 
-// ✅ VIDER TOUS LES PANIERS
 function posResetAllCarts() {
     if (!confirm('⚠️ Vider TOUS les paniers ? Cette action est irréversible.')) return;
     posMultiCarts = { 'panier1': [] };
@@ -559,7 +556,7 @@ function posGetTotalAllCarts() {
     return total;
 }
 
-// ==================== OPTIMISATION : PRÉCHARGEMENT DU POS ====================
+// ==================== PRÉCHARGEMENT ====================
 async function preloadPosData() {
 if (typeof CacheDB === 'undefined') return;
 
@@ -577,10 +574,9 @@ console.warn('Erreur préchargement POS:', e);
 }
 }
 
-// Lancer le préchargement immédiatement
 preloadPosData();
 
-// ==================== TOGGLE OUTILS POS - CORRIGÉ AVEC DESIGN MODERNE ====================
+// ==================== TOGGLE OUTILS POS - DESIGN VERT ====================
 function posToggleTools() {
     posToolsVisible = !posToolsVisible;
     var toolsContainer = document.getElementById('posToolsContainer');
@@ -598,7 +594,7 @@ function posToggleTools() {
             toolsContainer.style.background = 'var(--bg-card)';
             toolsContainer.style.borderRadius = '12px';
             toolsContainer.style.border = '1px solid var(--border)';
-            toolsContainer.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+            toolsContainer.style.boxShadow = '0 2px 8px rgba(0, 200, 83, 0.08)';
             toolsContainer.classList.add('visible');
         } else {
             toolsContainer.style.display = 'none';
@@ -608,7 +604,8 @@ function posToggleTools() {
 
     if (toggleBtn) {
         toggleBtn.innerHTML = posToolsVisible ? '✕ Masquer tout' : '🔍 Afficher tout';
-        toggleBtn.style.background = posToolsVisible ? '#ef4444' : '#14B8A6';
+        toggleBtn.style.background = posToolsVisible ? '#ef4444' : POS_GRADIENT;
+        toggleBtn.style.boxShadow = posToolsVisible ? '0 4px 14px rgba(239, 68, 68, 0.3)' : POS_SHADOW;
     }
 
     var searchInput = document.getElementById('posSearchInput');
@@ -654,7 +651,7 @@ function posToggleTools() {
     }
 }
 
-// ==================== APPLIQUER LE SCROLL SUR DYNAMICCONTENT ====================
+// ==================== SCROLL ====================
 function applyDynamicContentScroll() {
 var container = document.getElementById('dynamicContent');
 if (container) {
@@ -688,7 +685,7 @@ return 0;
 }
 }
 
-// ✅ VERSION MODIFIÉE : affichage crédit cliquable - REDIRECTION VERS PAGE CRÉDITS AVEC SAUVEGARDE D'ÉTAT
+// ✅ AFFICHAGE CRÉDIT CLIENT - AVEC COULEUR VERTE
 async function updateClientCreditDisplay(clientId) {
 var displayEl = document.getElementById('clientCreditDisplay');
 if (!displayEl) return;
@@ -732,7 +729,7 @@ navigateTo('credits');
 } else {
 displayEl.textContent = '✅ Aucun crédit';
 displayEl.style.display = 'block';
-displayEl.style.color = '#14B8A6';
+displayEl.style.color = POS_PRIMARY;
 displayEl.style.fontWeight = '700';
 displayEl.style.fontSize = '28px';
 displayEl.style.cursor = 'default';
@@ -742,12 +739,11 @@ displayEl.onclick = null;
 }
 
 // ============================================================
-// ✅ loadPosPage - VERSION CORRIGÉE AVEC RESTAURATION AVANT RESET
+// ✅ loadPosPage
 // ============================================================
 async function loadPosPage(c){
 applyDynamicContentScroll();
 
-// ✅ Charger les multi-paniers et leurs données
 posChargerToutesDonneesPaniers();
 posLoadMultiCarts();
 
@@ -793,7 +789,7 @@ console.log('💰 Montant donné:', posAmountGiven);
 
 posCommandesFilterText=''; posCommandesSortField='createdAt'; posCommandesSortOrder='desc'; posSearchQuery=''; productIndexBuilt=false; posProductOffset=0; posToolsVisible=false;
 posCategoriesList=[]; posProductsList=[]; posAllClients=[]; posFilteredClients=[];
-c.innerHTML='<div style="text-align:center;padding:60px;"><i class="fas fa-spinner fa-spin" style="font-size:2.5rem;color:#14B8A6;"></i><p style="margin-top:15px;color:#64748b;">Chargement du POS...</p></div>';
+c.innerHTML='<div style="text-align:center;padding:60px;"><i class="fas fa-spinner fa-spin" style="font-size:2.5rem;color:'+POS_PRIMARY+';"></i><p style="margin-top:15px;color:#64748b;">Chargement du POS...</p></div>';
 setStaticBackButtonVisibility(false);
 
 if (shouldRestore) {
@@ -897,7 +893,6 @@ if (typeof window.updatePaymentButtons === 'function') window.updatePaymentButto
 }
 }
 
-// ⚡ OPTIMISATION : debounce 80ms + cache
 function posSearchProducts(query){
 clearTimeout(window._searchTimeout);
 window._searchTimeout = setTimeout(function(){
@@ -909,7 +904,6 @@ posViewMode = 'products';
 posSelectedCategoryForView = null;
 }
 
-// ⚡ OPTIMISATION : pré-remplir le cache (partagé avec pos-audio.js)
 if (posSearchQuery.length > 0 && !posSearchCache[posSearchQuery]) {
     if (typeof fastSearch === 'function') {
         posSearchCache[posSearchQuery] = fastSearch(posSearchQuery).slice();
@@ -917,7 +911,7 @@ if (posSearchQuery.length > 0 && !posSearchCache[posSearchQuery]) {
 }
 
 if(isOnPOSPage()) filterProductGrid();
-}, 80);   // ⚡ 150ms → 80ms
+}, 80);
 }
 
 function clearPosSearch() {
@@ -955,7 +949,7 @@ if (clearBtn) clearBtn.style.display = 'none';
 
 function loadMoreProducts(){ posProductOffset+=posProductBatchSize; filterProductGrid(); }
 
-// ==================== FILTER PRODUCT GRID AVEC MODE CATÉGORIES ====================
+// ==================== FILTER PRODUCT GRID - DESIGN VERT ====================
 function filterProductGrid(){
 if(!isOnPOSPage() || posStep !== 1) return;
 
@@ -967,7 +961,6 @@ afficherCategories(grid);
 return;
 }
 
-// ⚡ OPTIMISATION : utiliser le cache si disponible
 var f;
 if (posSearchCache[posSearchQuery]) {
     f = posSearchCache[posSearchQuery].slice();
@@ -1008,12 +1001,13 @@ grid.style.alignContent = 'start';
 
 var html = '';
 
-html += '<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;padding:4px 6px;margin-bottom:4px;background:var(--bg-page);border-radius:8px;">';
-html += '<button onclick="retournerCategories()" style="display:flex;align-items:center;gap:6px;background:var(--black);color:var(--white);border:none;border-radius:8px;padding:6px 14px;font-size:0.8rem;font-weight:600;cursor:pointer;">';
+// ✅ Barre retour catégories - DESIGN VERT
+html += '<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;padding:6px 10px;margin-bottom:6px;background:var(--bg-card);border-radius:12px;border:1px solid var(--border);">';
+html += '<button onclick="retournerCategories()" style="display:flex;align-items:center;gap:6px;background:'+POS_GRADIENT+';color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:0.85rem;font-weight:600;cursor:pointer;box-shadow:'+POS_SHADOW+';transition:all 0.2s;" onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\''+POS_SHADOW_HOVER+'\';" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\''+POS_SHADOW+'\';">';
 html += '<i class="fas fa-arrow-left"></i> Retour aux catégories';
 html += '</button>';
 if (posSelectedCategoryForView) {
-html += '<span style="font-weight:700;font-size:0.9rem;color:#000000;background:#FFFFFF;padding:4px 12px;border-radius:6px;border:1px solid #14B8A6;">📂 ' + escapeHtml(posSelectedCategoryForView) + '</span>';
+html += '<span style="font-weight:700;font-size:0.9rem;color:'+POS_PRIMARY_DARK+';background:'+POS_LIGHT_BG+';padding:6px 14px;border-radius:8px;border:1px solid '+POS_PRIMARY+';">📂 ' + escapeHtml(posSelectedCategoryForView) + '</span>';
 }
 html += '</div>';
 
@@ -1045,29 +1039,28 @@ dn = dn.replace(new RegExp('(' + posSearchQuery.replace(/[.*+?^${}()|[\]\\]/g,'\
 var isMobile = window.innerWidth < 700;
 
 var cardStyle = isMobile ?
-'padding:4px 2px;min-height:110px;max-height:140px;aspect-ratio:1/1;border-radius:6px;border-width:1px;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;' :
-'padding:6px 8px;min-height:150px;max-height:190px;aspect-ratio:1/1;border-radius:8px;border-width:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;';
+'padding:4px 2px;min-height:110px;max-height:140px;aspect-ratio:1/1;border-radius:10px;border-width:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;' :
+'padding:6px 8px;min-height:150px;max-height:190px;aspect-ratio:1/1;border-radius:12px;border-width:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;';
 
 var imgStyle = isMobile ?
-'height:55px;width:55px;margin-bottom:4px;border-radius:6px;overflow:hidden;flex-shrink:0;background:var(--gray-200);display:flex;align-items:center;justify-content:center;' :
-'height:75px;width:75px;margin-bottom:6px;border-radius:8px;overflow:hidden;flex-shrink:0;background:var(--gray-200);display:flex;align-items:center;justify-content:center;';
+'height:55px;width:55px;margin-bottom:4px;border-radius:8px;overflow:hidden;flex-shrink:0;background:var(--gray-100);display:flex;align-items:center;justify-content:center;' :
+'height:75px;width:75px;margin-bottom:6px;border-radius:10px;overflow:hidden;flex-shrink:0;background:var(--gray-100);display:flex;align-items:center;justify-content:center;';
 
 var nameStyle = isMobile ?
 'font-size:9px !important;font-weight:600 !important;line-height:1.3;text-align:center;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;color:var(--text-primary);margin:1px 0;' :
 'font-size:0.75rem !important;font-weight:600 !important;line-height:1.3;text-align:center;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;color:var(--text-primary);margin:2px 0;';
 
 var priceStyle = isMobile ?
-'font-size:10px !important;font-weight:700 !important;color:var(--text-primary);' :
-'font-size:0.8rem !important;font-weight:700 !important;color:var(--text-primary);';
+'font-size:10px !important;font-weight:700 !important;color:'+POS_PRIMARY_DARK+';' :
+'font-size:0.8rem !important;font-weight:700 !important;color:'+POS_PRIMARY_DARK+';';
 
 var imgContent = '';
 if (p.imageBase64) {
-imgContent = '<img src="' + escapeHtml(p.imageBase64) + '" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">';
+imgContent = '<img src="' + escapeHtml(p.imageBase64) + '" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">';
 } else {
 imgContent = '<i class="fas fa-box" style="' + (isMobile ? 'font-size:18px;color:var(--text-muted);' : 'font-size:26px;color:var(--text-muted);') + '"></i>';
 }
 
-// ⚡ OPTIMISATION : content-visibility auto sur les cartes
 html += '<div class="pos-product-card ' + sc + '" style="' + cardStyle + 'content-visibility:auto;contain-intrinsic-size:150px 150px;" onclick="posAddToCartOrOpenOptions(\'' + p.id + '\')">' +
 '<div class="pos-product-img" style="' + imgStyle + '">' + imgContent + '</div>' +
 '<div class="pos-product-info" style="display:flex;flex-direction:column;align-items:center;width:100%;flex:1;justify-content:center;overflow:hidden;min-height:0;">' +
@@ -1089,7 +1082,7 @@ grid.innerHTML = html;
 updateClearButtonVisibility();
 }
 
-// ==================== AFFICHER LES CATÉGORIES - VERSION CORRIGÉE ====================
+// ==================== AFFICHER LES CATÉGORIES - DESIGN VERT ====================
 function afficherCategories(grid) {
 var isMobile = window.innerWidth < 700;
 var isTablette = window.innerWidth >= 700 && window.innerWidth <= 1024;
@@ -1104,7 +1097,7 @@ grid.style.alignContent = 'start';
 
 var html = '';
 
-html += '<div style="grid-column:1/-1;padding:6px 8px;font-size:0.9rem;font-weight:700;color:var(--text-primary);">';
+html += '<div style="grid-column:1/-1;padding:8px 10px;font-size:0.95rem;font-weight:700;color:'+POS_PRIMARY_DARK+';">';
 html += '📂 Choisissez une catégorie';
 html += '</div>';
 
@@ -1168,32 +1161,32 @@ var imgContent = '';
 if (cat.imageBase64) {
 imgContent = '<img src="' + escapeHtml(cat.imageBase64) + '" loading="lazy" alt="' + escapeHtml(cat.nom) + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
 } else {
-imgContent = '<i class="fas fa-folder" style="font-size:' + folderSize + ';color:var(--accent);"></i>';
+imgContent = '<i class="fas fa-folder" style="font-size:' + folderSize + ';color:'+POS_PRIMARY+';"></i>';
 }
 
 var cardStyle = 'min-height:' + cardMinHeight + ';max-height:' + cardMaxHeight + ';' +
-'padding:8px 4px;border-radius:10px;' +
+'padding:8px 4px;border-radius:12px;' +
 'border:2px solid transparent;' +
 'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
 'width:100%;background:#FFFFFF;cursor:pointer;' +
-'transition:all 0.2s cubic-bezier(0.4, 0, 0.2, 1);gap:2px;';
+'transition:all 0.2s cubic-bezier(0.4, 0, 0.2, 1);gap:2px;box-shadow:var(--shadow-sm);';
 
 var imgStyle = 'width:' + imgSize + ';height:' + imgSize + ';' +
 'border-radius:50%;overflow:hidden;flex-shrink:0;' +
 'background:var(--gray-100);display:flex;align-items:center;justify-content:center;' +
-'margin-bottom:2px;border:2px solid var(--gray-200);';
+'margin-bottom:2px;border:2px solid var(--gray-200);transition:all 0.2s;';
 
 var nameStyle = 'font-size:' + nameSize + ';font-weight:700;text-align:center;' +
 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
 'max-width:100%;color:#000000;margin-top:2px;line-height:1.2;display:block;';
 
-var countStyle = 'font-size:' + countSize + ';color:var(--text-muted);' +
-'font-weight:500;display:block;margin-top:0px;';
+var countStyle = 'font-size:' + countSize + ';color:'+POS_PRIMARY_DARK+';' +
+'font-weight:600;display:block;margin-top:0px;';
 
 html += '<div class="pos-category-card" data-cat-name="' + escapeHtml(cat.nom) + '" style="' + cardStyle + '" ' +
 'onclick="selectionnerCategorie(\'' + escapeHtml(cat.nom).replace(/'/g, "\\'") + '\')"' +
-'onmouseover="if(!this.classList.contains(\'active\')){this.style.borderColor=\'var(--accent)\';this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'var(--shadow-md)\';}"' +
-'onmouseout="if(!this.classList.contains(\'active\')){this.style.borderColor=\'transparent\';this.style.transform=\'translateY(0)\';this.style.boxShadow=\'none\';}">' +
+'onmouseover="if(!this.classList.contains(\'active\')){this.style.borderColor=\''+POS_PRIMARY+'\';this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 8px 24px rgba(0, 200, 83, 0.15)\';}"' +
+'onmouseout="if(!this.classList.contains(\'active\')){this.style.borderColor=\'transparent\';this.style.transform=\'translateY(0)\';this.style.boxShadow=\'var(--shadow-sm)\';}">' +
 '<div style="' + imgStyle + '">' + imgContent + '</div>' +
 '<span style="' + nameStyle + '">' + escapeHtml(cat.nom) + '</span>' +
 '<span style="' + countStyle + '">' + count + ' produit' + (count > 1 ? 's' : '') + '</span>' +
@@ -1204,13 +1197,13 @@ html += '<div class="pos-category-card" data-cat-name="' + escapeHtml(cat.nom) +
 grid.innerHTML = html;
 }
 
-// ==================== SÉLECTIONNER UNE CATÉGORIE - AVEC TEXTE NOIR SUR FOND BLANC ====================
+// ==================== SÉLECTIONNER UNE CATÉGORIE - DESIGN VERT ====================
 function selectionnerCategorie(catName) {
 document.querySelectorAll('.pos-category-card').forEach(function(card) {
 card.classList.remove('active');
 card.style.borderColor = 'transparent';
 card.style.transform = 'translateY(0)';
-card.style.boxShadow = 'none';
+card.style.boxShadow = 'var(--shadow-sm)';
 card.style.background = '#FFFFFF';
 card.style.color = '#000000';
 });
@@ -1220,11 +1213,11 @@ var nameSpan = card.querySelector('span:first-of-type');
 var catNameAttr = card.getAttribute('data-cat-name');
 if (nameSpan && nameSpan.textContent.trim() === catName) {
 card.classList.add('active');
-card.style.borderColor = '#14B8A6';
-card.style.background = '#FFFFFF';
+card.style.borderColor = POS_PRIMARY;
+card.style.background = POS_LIGHT_BG;
 card.style.color = '#000000';
-card.style.transform = 'translateY(-2px)';
-card.style.boxShadow = '0 4px 12px rgba(20,184,166,0.25)';
+card.style.transform = 'translateY(-3px)';
+card.style.boxShadow = '0 4px 20px rgba(0, 200, 83, 0.25)';
 }
 });
 
@@ -1251,7 +1244,7 @@ document.querySelectorAll('.pos-category-card').forEach(function(card) {
 card.classList.remove('active');
 card.style.borderColor = 'transparent';
 card.style.transform = 'translateY(0)';
-card.style.boxShadow = 'none';
+card.style.boxShadow = 'var(--shadow-sm)';
 card.style.background = '#FFFFFF';
 card.style.color = '#000000';
 });
@@ -1272,7 +1265,7 @@ filterProductGrid();
 }
 }
 
-// ⚡ OPTIMISATION : cache de recherche client
+// ⚡ RECHERCHE CLIENT
 function posSearchClient(query){
 var q = query.toLowerCase().trim();
 posCurrentClient = null;
@@ -1289,7 +1282,6 @@ return;
 }
 if (clearBtn) clearBtn.style.display = 'flex';
 
-// ⚡ OPTIMISATION : cache de recherche client
 if (typeof window.clientSearchCache === 'undefined') {
     window.clientSearchCache = {};
 }
@@ -1471,7 +1463,7 @@ return a.localeCompare(b);
 
 posCurrentProductId = pid;
 
-var h = '<h4 style="font-size:1.2rem;margin-bottom:12px;">' + escapeHtml(p.nom) + '</h4>';
+var h = '<h4 style="font-size:1.2rem;margin-bottom:12px;color:'+POS_PRIMARY_DARK+';">' + escapeHtml(p.nom) + '</h4>';
 h += '<p style="color:#64748b;font-size:0.85rem;margin-bottom:12px;">Sélectionnez les ingrédients à conserver (décochez pour exclure) :</p>';
 
 if (sortedCats.length === 0) {
@@ -1479,15 +1471,15 @@ h += '<div style="color:#94a3b8;padding:12px;">Aucun ingrédient pour ce produit
 } else {
 sortedCats.forEach(function(cat) {
 h += '<div style="margin-bottom:14px;">';
-h += '<label style="font-weight:700;font-size:0.9rem;display:block;margin-bottom:4px;">🥫 ' + escapeHtml(cat) + '</label>';
+h += '<label style="font-weight:700;font-size:0.9rem;display:block;margin-bottom:4px;color:'+POS_PRIMARY_DARK+';">🥫 ' + escapeHtml(cat) + '</label>';
 h += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
 
 grouped[cat].forEach(function(ing) {
 var disabled = ing.stockDisponible <= 0 ? 'disabled' : '';
 var styleDisabled = ing.stockDisponible <= 0 ? 'opacity:0.5;' : '';
 
-h += '<label style="display:flex;align-items:center;gap:6px;padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;cursor:' + (ing.stockDisponible <= 0 ? 'not-allowed' : 'pointer') + ';' + styleDisabled + '">';
-h += '<input type="checkbox" class="pos-interdit-check" value="' + escapeHtml(ing.nom) + '" ' + disabled + ' checked>';
+h += '<label style="display:flex;align-items:center;gap:6px;padding:8px 12px;border:2px solid #e2e8f0;border-radius:10px;cursor:' + (ing.stockDisponible <= 0 ? 'not-allowed' : 'pointer') + ';' + styleDisabled + 'transition:all 0.2s;" onmouseover="this.style.borderColor=\''+POS_PRIMARY+'\';" onmouseout="this.style.borderColor=\'#e2e8f0\';">';
+h += '<input type="checkbox" class="pos-interdit-check" value="' + escapeHtml(ing.nom) + '" ' + disabled + ' checked style="accent-color:'+POS_PRIMARY+';">';
 h += ' ' + escapeHtml(ing.nom);
 if (ing.unite) h += ' (' + escapeHtml(ing.unite) + ')';
 if (ing.stockDisponible > 0) {
@@ -1502,15 +1494,15 @@ h += '</div></div>';
 });
 }
 
-h += '<div style="margin-bottom:12px;"><label style="font-weight:700;font-size:0.9rem;">🌶️ Épices:</label><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">';
+h += '<div style="margin-bottom:12px;"><label style="font-weight:700;font-size:0.9rem;color:'+POS_PRIMARY_DARK+';">🌶️ Épices:</label><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">';
 posEpicesList.forEach(function(s, idx) {
-h += '<label style="padding:6px 12px;border:2px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:0.85rem;"><input type="radio" name="pos-epice" value="' + s + '" ' + (idx === 0 ? 'checked' : '') + '> ' + s + '</label>';
+h += '<label style="padding:6px 12px;border:2px solid #e2e8f0;border-radius:10px;cursor:pointer;font-size:0.85rem;transition:all 0.2s;" onmouseover="this.style.borderColor=\''+POS_PRIMARY+'\';" onmouseout="this.style.borderColor=\'#e2e8f0\';"><input type="radio" name="pos-epice" value="' + s + '" ' + (idx === 0 ? 'checked' : '') + ' style="accent-color:'+POS_PRIMARY+';"> ' + s + '</label>';
 });
 h += '</div></div>';
 
-h += '<div style="margin-bottom:12px;"><label style="font-weight:700;font-size:0.9rem;">🧂 Sel:</label><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">';
+h += '<div style="margin-bottom:12px;"><label style="font-weight:700;font-size:0.9rem;color:'+POS_PRIMARY_DARK+';">🧂 Sel:</label><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">';
 posSelList.forEach(function(s, idx) {
-h += '<label style="padding:6px 12px;border:2px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:0.85rem;"><input type="radio" name="pos-sel" value="' + s + '" ' + (idx === 0 ? 'checked' : '') + '> ' + s + '</label>';
+h += '<label style="padding:6px 12px;border:2px solid #e2e8f0;border-radius:10px;cursor:pointer;font-size:0.85rem;transition:all 0.2s;" onmouseover="this.style.borderColor=\''+POS_PRIMARY+'\';" onmouseout="this.style.borderColor=\'#e2e8f0\';"><input type="radio" name="pos-sel" value="' + s + '" ' + (idx === 0 ? 'checked' : '') + ' style="accent-color:'+POS_PRIMARY+';"> ' + s + '</label>';
 });
 h += '</div></div>';
 
@@ -1622,7 +1614,7 @@ console.error('❌ Erreur récupération produit:', err);
 });
 }
 
-// ==================== updateCartOnly - NOM SUR UNE LIGNE ====================
+// ==================== updateCartOnly ====================
 function updateCartOnly(){
 if(!isOnPOSPage()) return;
 var ci=document.querySelector('.pos-cart-items');
@@ -1657,7 +1649,7 @@ html+='<div class="pos-cart-item" style="display:flex;align-items:center;justify
 '<button class="pos-qty-btn" onclick="posUpdateQty('+k+',1)" style="width:'+btnSize+';height:'+btnSize+';border-radius:50%;border:2px solid var(--border);background:var(--white);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:'+fontSize+';transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.05);"><i class="fas fa-plus"></i></button>' +
 '<button class="pos-remove-btn" onclick="posRemoveItem('+k+')" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:2px;font-size:0.8rem;transition:all 0.2s;"><i class="fas fa-times"></i></button>' +
 '</div>' +
-'<span class="pos-cart-item-total" style="font-size:'+totalSize+';font-weight:700;min-width:50px;text-align:right;flex-shrink:0;">'+(it.prixUnitaire*it.quantite).toFixed(2)+' MAD</span>' +
+'<span class="pos-cart-item-total" style="font-size:'+totalSize+';font-weight:700;min-width:50px;text-align:right;flex-shrink:0;color:'+POS_PRIMARY_DARK+';">'+(it.prixUnitaire*it.quantite).toFixed(2)+' MAD</span>' +
 '</div>';
 }
 }
@@ -1696,9 +1688,9 @@ return;
 buildFullPOS(c);
 }
 
-// ==================== buildFullPOS AVEC HAUTEURS CORRIGÉES ET DESIGN MODERNE ====================
+// ==================== buildFullPOS - DESIGN VERT ====================
 function buildFullPOS(c){
-if(posProductsList.length===0&&posCategoriesList.length===0){ c.innerHTML='<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:#14B8A6;"></i><p>Chargement...</p></div>'; return; }
+if(posProductsList.length===0&&posCategoriesList.length===0){ c.innerHTML='<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:'+POS_PRIMARY+';"></i><p>Chargement...</p></div>'; return; }
 var st=posCalculateTotal(),t=st-posDiscountMAD;
 var isMobile = window.innerWidth < 700;
 var productPanelStyle = posStep===2 ? ' style="display:none;"' : '';
@@ -1709,22 +1701,22 @@ var stepNumberSize2 = isMobile ? '22px' : '26px';
 var stepGap = isMobile ? '8px' : '12px';
 
 var stepIndicator = '<div class="pos-steps-nav" style="display:flex; justify-content:center; gap:'+stepGap+'; margin-bottom:4px; padding:4px 10px; background:var(--bg-page); border-radius:var(--radius); cursor:default;">' +
-'<div class="pos-step ' + (posStep === 1 ? 'active' : '') + '" style="display:flex; align-items:center; gap:4px; font-size:'+stepSize+'; font-weight:600; color:' + (posStep === 1 ? 'var(--black)' : 'var(--text-muted)') + '; cursor:pointer;" onclick="posNaviguerEtape(1)">' +
-'<span class="step-number" style="display:inline-flex; align-items:center; justify-content:center; width:'+stepNumberSize2+'; height:'+stepNumberSize2+'; border-radius:50%; background:' + (posStep === 1 ? 'var(--black)' : 'var(--gray-200)') + '; color:' + (posStep === 1 ? 'var(--white)' : 'var(--text-muted)') + '; font-size:'+stepNumberSize+'; font-weight:700;">1</span>' +
+'<div class="pos-step ' + (posStep === 1 ? 'active' : '') + '" style="display:flex; align-items:center; gap:4px; font-size:'+stepSize+'; font-weight:600; color:' + (posStep === 1 ? POS_PRIMARY_DARK : 'var(--text-muted)') + '; cursor:pointer;" onclick="posNaviguerEtape(1)">' +
+'<span class="step-number" style="display:inline-flex; align-items:center; justify-content:center; width:'+stepNumberSize2+'; height:'+stepNumberSize2+'; border-radius:50%; background:' + (posStep === 1 ? POS_GRADIENT : 'var(--gray-200)') + '; color:' + (posStep === 1 ? '#fff' : 'var(--text-muted)') + '; font-size:'+stepNumberSize+'; font-weight:700;">1</span>' +
 '<span style="font-size:'+stepSize+'; font-weight:600;">Panier</span>' +
 '</div>' +
-'<div class="pos-step ' + (posStep === 2 ? 'active' : '') + '" style="display:flex; align-items:center; gap:4px; font-size:'+stepSize+'; font-weight:600; color:' + (posStep === 2 ? 'var(--black)' : 'var(--text-muted)') + '; cursor:pointer;" onclick="posNaviguerEtape(2)">' +
-'<span class="step-number" style="display:inline-flex; align-items:center; justify-content:center; width:'+stepNumberSize2+'; height:'+stepNumberSize2+'; border-radius:50%; background:' + (posStep === 2 ? 'var(--black)' : 'var(--gray-200)') + '; color:' + (posStep === 2 ? 'var(--white)' : 'var(--text-muted)') + '; font-size:'+stepNumberSize+'; font-weight:700;">2</span>' +
+'<div class="pos-step ' + (posStep === 2 ? 'active' : '') + '" style="display:flex; align-items:center; gap:4px; font-size:'+stepSize+'; font-weight:600; color:' + (posStep === 2 ? POS_PRIMARY_DARK : 'var(--text-muted)') + '; cursor:pointer;" onclick="posNaviguerEtape(2)">' +
+'<span class="step-number" style="display:inline-flex; align-items:center; justify-content:center; width:'+stepNumberSize2+'; height:'+stepNumberSize2+'; border-radius:50%; background:' + (posStep === 2 ? POS_GRADIENT : 'var(--gray-200)') + '; color:' + (posStep === 2 ? '#fff' : 'var(--text-muted)') + '; font-size:'+stepNumberSize+'; font-weight:700;">2</span>' +
 '<span style="font-size:'+stepSize+'; font-weight:600;">Paiement</span>' +
 '</div>' +
 '</div>';
 
-// ==================== BARRE MULTI-PANIERS AVEC NOM DU CLIENT - VERSION AMÉLIORÉE ====================
-var multiCartBar = '<div class="pos-multi-carts-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);margin-bottom:4px;">';
+// ✅ BARRE MULTI-PANIERS - DESIGN VERT
+var multiCartBar = '<div class="pos-multi-carts-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 10px;background:var(--bg-card);border-radius:12px;border:1px solid var(--border);margin-bottom:6px;">';
 
 var cartCount = Object.keys(posMultiCarts).length;
 var isMax = cartCount >= MAX_PANIERS;
-multiCartBar += '<button onclick="posCreateNewCart()" style="background:' + (isMax ? '#94a3b8' : '#14B8A6') + ';color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600;cursor:' + (isMax ? 'not-allowed' : 'pointer') + ';display:flex;align-items:center;gap:4px;opacity:' + (isMax ? '0.6' : '1') + ';" ' + (isMax ? 'disabled' : '') + ' title="' + (isMax ? 'Limite de ' + MAX_PANIERS + ' paniers atteinte' : '') + '"><i class="fas fa-plus"></i> Nouveau</button>';
+multiCartBar += '<button onclick="posCreateNewCart()" style="background:' + (isMax ? '#94a3b8' : POS_GRADIENT) + ';color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;cursor:' + (isMax ? 'not-allowed' : 'pointer') + ';display:flex;align-items:center;gap:4px;opacity:' + (isMax ? '0.6' : '1') + ';box-shadow:' + (isMax ? 'none' : POS_SHADOW) + ';transition:all 0.2s;" ' + (isMax ? 'disabled' : '') + ' title="' + (isMax ? 'Limite de ' + MAX_PANIERS + ' paniers atteinte' : '') + '"><i class="fas fa-plus"></i> Nouveau</button>';
 
 var cartKeys = Object.keys(posMultiCarts);
 for (var k = 0; k < cartKeys.length; k++) {
@@ -1742,18 +1734,18 @@ clientName = posMultiPaniersData[cid].client.name || '';
 }
 var displayName = clientName ? clientName.substring(0, 12) : '';
 
-var bgColor = isActive ? '#f0fdf4' : 'var(--bg-page)';
-var borderColor = isActive ? '#14B8A6' : 'var(--border)';
-var textColor = isActive ? '#14B8A6' : 'var(--text-primary)';
+var bgColor = isActive ? POS_LIGHT_BG : 'var(--bg-page)';
+var borderColor = isActive ? POS_PRIMARY : 'var(--border)';
+var textColor = isActive ? POS_PRIMARY_DARK : 'var(--text-primary)';
 var fontWeight = isActive ? '700' : '500';
 
-multiCartBar += '<div style="display:flex;align-items:center;gap:2px;border:2px solid ' + borderColor + ';border-radius:6px;background:' + bgColor + ';padding:2px 8px;transition:all 0.2s ease;">';
+multiCartBar += '<div style="display:flex;align-items:center;gap:2px;border:2px solid ' + borderColor + ';border-radius:8px;background:' + bgColor + ';padding:3px 10px;transition:all 0.2s ease;">';
 multiCartBar += '<button onclick="posSwitchToCart(\'' + cid + '\')" style="background:none;border:none;cursor:pointer;font-weight:' + fontWeight + ';font-size:12px;color:' + textColor + ';padding:2px 4px;">' + cid + ' (' + count + ')</button>';
 if (displayName) {
 multiCartBar += '<span style="font-size:9px;color:#94a3b8;max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(displayName) + '</span>';
 }
 if (count > 0) {
-multiCartBar += '<span style="font-size:9px;color:#94a3b8;">' + total.toFixed(0) + ' MAD</span>';
+multiCartBar += '<span style="font-size:9px;color:'+POS_PRIMARY_DARK+';font-weight:600;">' + total.toFixed(0) + ' MAD</span>';
 }
 if (cartKeys.length > 1) {
 multiCartBar += '<button onclick="posDeleteCart(\'' + cid + '\')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px;padding:0 4px;font-weight:700;" title="Supprimer ce panier">✕</button>';
@@ -1762,10 +1754,10 @@ multiCartBar += '</div>';
 }
 
 var grandTotal = posGetTotalAllCarts();
-multiCartBar += '<span style="font-size:11px;color:#94a3b8;margin-left:auto;">Total: ' + grandTotal.toFixed(2) + ' MAD</span>';
+multiCartBar += '<span style="font-size:11px;color:'+POS_PRIMARY_DARK+';font-weight:700;margin-left:auto;">Total: ' + grandTotal.toFixed(2) + ' MAD</span>';
 
 if (cartKeys.length > 1) {
-multiCartBar += '<button onclick="posResetAllCarts()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:2px 8px;font-size:10px;cursor:pointer;" title="Vider tous les paniers">🗑️ Tout</button>';
+multiCartBar += '<button onclick="posResetAllCarts()" style="background:linear-gradient(135deg, #EF4444, #DC2626);color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(239, 68, 68, 0.3);" title="Vider tous les paniers">🗑️ Tout</button>';
 }
 
 multiCartBar += '</div>';
@@ -1789,28 +1781,28 @@ stepIndicator +
 multiCartBar +
 '<div class="pos-row" style="display:flex;flex-direction:column;gap:8px;width:100%;height:auto;">' +
 
-'<div class="pos-products-panel" style="' + productPanelDisplay + ' padding:'+panelPadding+'; width:100%; background:var(--bg-card); border-radius:var(--radius-xl); box-shadow:var(--shadow-xs); border:1px solid var(--border); display:flex; flex-direction:column; height:auto; overflow:visible; min-height:350px; max-height:80vh; flex:8;">' +
+'<div class="pos-products-panel" style="' + productPanelDisplay + ' padding:'+panelPadding+'; width:100%; background:var(--bg-card); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); border:1px solid var(--border); display:flex; flex-direction:column; height:auto; overflow:visible; min-height:350px; max-height:80vh; flex:8;">' +
 
 '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px;">' +
 '<div style="display:flex;justify-content:center;align-items:center;margin-bottom:2px;">' +
-'<button id="posToggleToolsBtn" onclick="posToggleTools()" style="background:#14B8A6;color:#fff;border:none;border-radius:6px;padding:5px 20px;font-size:0.75rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;margin:0 auto;">🔍 Afficher tout</button>' +
+'<button id="posToggleToolsBtn" onclick="posToggleTools()" style="background:'+POS_GRADIENT+';color:#fff;border:none;border-radius:10px;padding:8px 22px;font-size:0.8rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;margin:0 auto;box-shadow:'+POS_SHADOW+';transition:all 0.2s;" onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\''+POS_SHADOW_HOVER+'\';" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\''+POS_SHADOW+'\';">🔍 Afficher tout</button>' +
 '</div>' +
 
-'<div id="posToolsContainer" style="display:none;flex-direction:column;gap:4px;margin-bottom:4px;padding:5px 8px;background:var(--bg-page);border-radius:6px;border:1px solid var(--border);">' +
+'<div id="posToolsContainer" style="display:none;flex-direction:column;gap:4px;margin-bottom:4px;padding:5px 8px;background:var(--bg-page);border-radius:10px;border:1px solid var(--border);">' +
 
 '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-'<div style="flex:1;min-width:120px;display:flex;align-items:center;background:var(--bg-page);border:2px solid var(--border);border-radius:40px;padding:2px 12px;position:relative;height:'+(isMobile?'34px':'38px')+';transition:var(--transition);">' +
-'<i class="fas fa-search" style="color:var(--text-muted);margin-right:6px;font-size:'+(isMobile?'13px':'15px')+';"></i>' +
+'<div style="flex:1;min-width:120px;display:flex;align-items:center;background:var(--bg-card);border:2px solid var(--border);border-radius:40px;padding:2px 12px;position:relative;height:'+(isMobile?'34px':'38px')+';transition:var(--transition);" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 83, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';">' +
+'<i class="fas fa-search" style="color:'+POS_PRIMARY+';margin-right:6px;font-size:'+(isMobile?'13px':'15px')+';"></i>' +
 '<input type="text" id="posSearchInput" placeholder="🔍 Rechercher un produit..." value="'+escapeHtml(posSearchQuery)+'" onkeyup="posSearchProducts(this.value); updateClearButtonVisibility();" oninput="updateClearButtonVisibility();" style="border:none;outline:none;padding:0;width:100%;background:transparent;font-size:'+(isMobile?'13px':'15px')+';padding-right:28px;height:'+(isMobile?'34px':'38px')+';color:var(--text-primary);">' +
 '<button id="posSearchClearBtn" onclick="clearPosSearch()" style="display:'+(posSearchQuery ? 'flex' : 'none')+';position:absolute;right:8px;background:none;border:none;cursor:pointer;padding:2px;color:var(--text-muted);font-size:'+(isMobile?'14px':'16px')+';align-items:center;justify-content:center;" title="Effacer"><i class="fas fa-times-circle"></i></button>' +
 '</div>' +
 
-'<button id="posMicBtn" title="Recherche vocale" style="background:var(--bg-page);border:2px solid var(--border);border-radius:50%;width:'+(isMobile?'36px':'40px')+';height:'+(isMobile?'36px':'40px')+';cursor:pointer;font-size:'+(isMobile?'14px':'16px')+';display:flex;align-items:center;justify-content:center;color:var(--text-primary);transition:var(--transition);" onclick="posToggleVoiceSearch()"><i class="fas fa-microphone"></i></button>' +
+'<button id="posMicBtn" title="Recherche vocale" style="background:var(--bg-card);border:2px solid var(--border);border-radius:50%;width:'+(isMobile?'36px':'40px')+';height:'+(isMobile?'36px':'40px')+';cursor:pointer;font-size:'+(isMobile?'14px':'16px')+';display:flex;align-items:center;justify-content:center;color:'+POS_PRIMARY+';transition:var(--transition);" onclick="posToggleVoiceSearch()" onmouseover="this.style.borderColor=\''+POS_PRIMARY+'\';" onmouseout="this.style.borderColor=\'var(--border)\';"><i class="fas fa-microphone"></i></button>' +
 
 '<div style="display:flex;gap:6px;margin-left:auto;">' +
 (window.posIsClientMode ? '' :
-'<button id="posTablesBtn" onclick="posAfficherCommandesTables()" style="background:var(--bg-page);border:2px solid var(--border);border-radius:40px;padding:6px 14px;font-weight:600;font-size:'+(isMobile?'11px':'13px')+';display:flex;align-items:center;gap:6px;color:var(--text-primary);cursor:pointer;transition:var(--transition);">🍽️ Tables <span style="background:#ef4444;color:#fff;border-radius:20px;padding:0 8px;font-size:'+(isMobile?'9px':'11px')+';font-weight:700;">'+posCommandesTablesCount+'</span></button>' +
-'<button id="posEnLigneBtn" onclick="navigateTo(\'commandes\')" style="background:var(--bg-page);border:2px solid var(--border);border-radius:40px;padding:6px 14px;font-weight:600;font-size:'+(isMobile?'11px':'13px')+';display:flex;align-items:center;gap:6px;color:var(--text-primary);cursor:pointer;transition:var(--transition);">🌐 En ligne <span style="background:#ef4444;color:#fff;border-radius:20px;padding:0 8px;font-size:'+(isMobile?'9px':'11px')+';font-weight:700;">'+posCommandesEnLigneCount+'</span></button>'
+'<button id="posTablesBtn" onclick="posAfficherCommandesTables()" style="background:var(--bg-card);border:2px solid var(--border);border-radius:40px;padding:6px 14px;font-weight:600;font-size:'+(isMobile?'11px':'13px')+';display:flex;align-items:center;gap:6px;color:var(--text-primary);cursor:pointer;transition:var(--transition);" onmouseover="this.style.borderColor=\''+POS_PRIMARY+'\';" onmouseout="this.style.borderColor=\'var(--border)\';">🍽️ Tables <span style="background:linear-gradient(135deg, #EF4444, #DC2626);color:#fff;border-radius:20px;padding:0 8px;font-size:'+(isMobile?'9px':'11px')+';font-weight:700;">'+posCommandesTablesCount+'</span></button>' +
+'<button id="posEnLigneBtn" onclick="navigateTo(\'commandes\')" style="background:var(--bg-card);border:2px solid var(--border);border-radius:40px;padding:6px 14px;font-weight:600;font-size:'+(isMobile?'11px':'13px')+';display:flex;align-items:center;gap:6px;color:var(--text-primary);cursor:pointer;transition:var(--transition);" onmouseover="this.style.borderColor=\''+POS_PRIMARY+'\';" onmouseout="this.style.borderColor=\'var(--border)\';">🌐 En ligne <span style="background:linear-gradient(135deg, #EF4444, #DC2626);color:#fff;border-radius:20px;padding:0 8px;font-size:'+(isMobile?'9px':'11px')+';font-weight:700;">'+posCommandesEnLigneCount+'</span></button>'
 ) +
 '</div>' +
 '</div>' +
@@ -1818,15 +1810,14 @@ multiCartBar +
 '</div>' +
 '</div>' +
 
-// ⚡ OPTIMISATION : content-visibility sur la grille
 '<div class="pos-products-grid" id="posProductGrid" style="grid-template-columns:'+gridCols+';gap:'+gridGap+';padding:'+gridPadding+';overflow-x:hidden;overflow-y:auto;flex-wrap:wrap;align-content:start;flex:1;contain:layout paint;content-visibility:auto;"></div>' +
 '</div>' +
 
-'<div class="pos-cart-panel" style="' + (isMobile ? mobileCartStyle : 'width:100%;background:var(--bg-card);border-radius:var(--radius-xl);box-shadow:var(--shadow-xs);border:1px solid var(--border);display:flex;flex-direction:column;margin-top:4px;max-height:35vh;flex:2;min-height:120px;') + '">';
+'<div class="pos-cart-panel" style="' + (isMobile ? mobileCartStyle : 'width:100%;background:var(--bg-card);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);border:1px solid var(--border);display:flex;flex-direction:column;margin-top:4px;max-height:35vh;flex:2;min-height:120px;') + '">';
 
 if(posStep===1){
-h+='<div class="pos-cart-header" style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid var(--border);flex-shrink:0;"><h3 style="font-size:'+(isMobile?'18px':'0.9rem')+';cursor:pointer;" onclick="document.querySelector(\'.pos-cart-panel\').scrollIntoView({behavior:\'smooth\',block:\'start\'})"><i class="fas fa-shopping-cart"></i> Panier <span class="pos-cart-badge" style="background:#14B8A6;color:#fff;border-radius:50%;padding:1px 6px;font-size:'+(isMobile?'12px':'0.6rem')+';">'+posCart.length+'</span></h3><button class="pos-clear-btn" onclick="posResetCart()" style="font-size:'+(isMobile?'12px':'0.7rem')+';background:#ef4444;color:#fff;border:none;border-radius:4px;padding:'+(isMobile?'3px 8px':'4px 10px')+';cursor:pointer;"><i class="fas fa-trash-alt"></i> Vider</button></div><div class="pos-cart-items" style="flex:1;overflow-y:auto;padding:4px 8px;min-height:60px;max-height:180px;">';
-if(posCart.length===0){ h+='<div class="pos-cart-empty" style="text-align:center;padding:15px 8px;color:#94a3b8;"><i class="fas fa-shopping-basket" style="font-size:'+(isMobile?'22px':'28px')+';"></i><p style="font-size:'+(isMobile?'12px':'0.8rem')+';">Panier vide</p></div>'; }
+h+='<div class="pos-cart-header" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);flex-shrink:0;"><h3 style="font-size:'+(isMobile?'18px':'0.9rem')+';cursor:pointer;color:'+POS_PRIMARY_DARK+';" onclick="document.querySelector(\'.pos-cart-panel\').scrollIntoView({behavior:\'smooth\',block:\'start\'})"><i class="fas fa-shopping-cart"></i> Panier <span class="pos-cart-badge" style="background:'+POS_GRADIENT+';color:#fff;border-radius:50%;padding:2px 8px;font-size:'+(isMobile?'12px':'0.7rem')+';font-weight:700;box-shadow:'+POS_SHADOW+';">'+posCart.length+'</span></h3><button class="pos-clear-btn" onclick="posResetCart()" style="font-size:'+(isMobile?'12px':'0.75rem')+';background:linear-gradient(135deg, #EF4444, #DC2626);color:#fff;border:none;border-radius:8px;padding:'+(isMobile?'4px 10px':'5px 12px')+';cursor:pointer;font-weight:600;box-shadow:0 4px 14px rgba(239, 68, 68, 0.3);transition:all 0.2s;" onmouseover="this.style.transform=\'translateY(-1px)\';" onmouseout="this.style.transform=\'translateY(0)\';"><i class="fas fa-trash-alt"></i> Vider</button></div><div class="pos-cart-items" style="flex:1;overflow-y:auto;padding:4px 8px;min-height:60px;max-height:180px;">';
+if(posCart.length===0){ h+='<div class="pos-cart-empty" style="text-align:center;padding:15px 8px;color:#94a3b8;"><i class="fas fa-shopping-basket" style="font-size:'+(isMobile?'22px':'28px')+';color:'+POS_PRIMARY+';opacity:0.4;"></i><p style="font-size:'+(isMobile?'12px':'0.8rem')+';margin-top:6px;">Panier vide</p></div>'; }
 else{
 for(var k=0;k<posCart.length;k++){
 var it=posCart[k], opts='';
@@ -1850,15 +1841,15 @@ h+='<div class="pos-cart-item" style="display:flex;align-items:center;justify-co
 '<button class="pos-qty-btn" onclick="posUpdateQty('+k+',1)" style="width:'+btnSize+';height:'+btnSize+';border-radius:50%;border:2px solid var(--border);background:var(--white);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:'+fontSize+';transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.05);"><i class="fas fa-plus"></i></button>' +
 '<button class="pos-remove-btn" onclick="posRemoveItem('+k+')" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:2px;font-size:0.8rem;transition:all 0.2s;"><i class="fas fa-times"></i></button>' +
 '</div>' +
-'<span class="pos-cart-item-total" style="font-size:'+totalSize+';font-weight:700;min-width:50px;text-align:right;flex-shrink:0;">'+(it.prixUnitaire*it.quantite).toFixed(2)+' MAD</span>' +
+'<span class="pos-cart-item-total" style="font-size:'+totalSize+';font-weight:700;min-width:50px;text-align:right;flex-shrink:0;color:'+POS_PRIMARY_DARK+';">'+(it.prixUnitaire*it.quantite).toFixed(2)+' MAD</span>' +
 '</div>';
 }
 }
-h+='</div><div style="padding:2px 0;display:flex;gap:3px;align-items:center;flex-shrink:0;"><label style="font-size:'+(isMobile?'12px':'0.7rem')+';">Remise:</label><input type="number" id="posDiscountMAD" value="'+posDiscountMAD+'" min="0" step="0.01" onchange="posUpdateDiscountMAD(this.value)" style="width:50px;padding:2px;border:2px solid #e2e8f0;border-radius:4px;font-size:'+(isMobile?'12px':'0.7rem')+';"></div><div class="pos-cart-footer" style="padding:2px 0;flex-shrink:0;">'+(posDiscountMAD>0?'<div style="display:flex;justify-content:space-between;font-size:'+(isMobile?'12px':'0.8rem')+';"><span>Sous-total</span><span>'+st.toFixed(2)+'</span></div><div style="display:flex;justify-content:space-between;color:#ef4444;font-size:'+(isMobile?'12px':'0.8rem')+';"><span>Remise</span><span>-'+posDiscountMAD.toFixed(2)+'</span></div>':'')+'<div class="pos-cart-total-row" style="display:flex;justify-content:space-between;font-size:'+(isMobile?'18px':'20px')+';font-weight:700;padding:3px 0;border-top:2px solid var(--border);"><span>Total</span><span>'+t.toFixed(2)+' MAD</span></div>' +
+h+='</div><div style="padding:4px 8px;display:flex;gap:6px;align-items:center;flex-shrink:0;border-top:1px solid var(--border);"><label style="font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:600;">Remise:</label><input type="number" id="posDiscountMAD" value="'+posDiscountMAD+'" min="0" step="0.01" onchange="posUpdateDiscountMAD(this.value)" style="width:60px;padding:4px 6px;border:2px solid var(--border);border-radius:6px;font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:600;"></div><div class="pos-cart-footer" style="padding:4px 10px;flex-shrink:0;">'+(posDiscountMAD>0?'<div style="display:flex;justify-content:space-between;font-size:'+(isMobile?'12px':'0.8rem')+';color:var(--text-secondary);"><span>Sous-total</span><span>'+st.toFixed(2)+' MAD</span></div><div style="display:flex;justify-content:space-between;color:#ef4444;font-size:'+(isMobile?'12px':'0.8rem')+';font-weight:600;"><span>Remise</span><span>-'+posDiscountMAD.toFixed(2)+' MAD</span></div>':'')+'<div class="pos-cart-total-row" style="display:flex;justify-content:space-between;font-size:'+(isMobile?'18px':'22px')+';font-weight:800;padding:6px 0;border-top:2px solid var(--border);color:'+POS_PRIMARY_DARK+';"><span>Total</span><span>'+t.toFixed(2)+' MAD</span></div>' +
 
-'<button class="pos-validate-btn" onclick="posGoToStep2()" '+(posCart.length===0?'disabled':'')+' style="width:100%;padding:10px;background:#14B8A6;color:#fff;border:none;border-radius:8px;font-size:18px;font-weight:700;height:40px;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:12px;"><i class="fas fa-check-circle"></i> Valider</button>' +
+'<button class="pos-validate-btn" onclick="posGoToStep2()" '+(posCart.length===0?'disabled':'')+' style="width:100%;padding:12px;background:'+(posCart.length===0?'#94a3b8':POS_GRADIENT)+';color:#fff;border:none;border-radius:10px;font-size:18px;font-weight:700;height:46px;cursor:'+(posCart.length===0?'not-allowed':'pointer')+';transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:16px;box-shadow:'+(posCart.length===0?'none':POS_SHADOW)+';" onmouseover="if(!this.disabled){this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\''+POS_SHADOW_HOVER+'\';}" onmouseout="if(!this.disabled){this.style.transform=\'translateY(0)\';this.style.boxShadow=\''+POS_SHADOW+'\';}"><i class="fas fa-check-circle"></i> Valider</button>' +
 
-'<button onclick="document.querySelector(\'.pos-steps-nav\').scrollIntoView({behavior:\'smooth\',block:\'start\'})" style="position:fixed;bottom:20px;right:20px;width:70px;height:70px;border-radius:50%;background:#14B8A6;color:#fff;border:none;font-size:28px;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,0.25);z-index:9999;display:flex;align-items:center;justify-content:center;transition:all 0.3s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 6px 25px rgba(0,0,0,0.35)\';" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'0 4px 15px rgba(0,0,0,0.25)\';"><i class="fas fa-arrow-up"></i></button>' +
+'<button onclick="document.querySelector(\'.pos-steps-nav\').scrollIntoView({behavior:\'smooth\',block:\'start\'})" style="position:fixed;bottom:20px;right:20px;width:70px;height:70px;border-radius:50%;background:'+POS_GRADIENT+';color:#fff;border:none;font-size:28px;cursor:pointer;box-shadow:'+POS_SHADOW+';z-index:9999;display:flex;align-items:center;justify-content:center;transition:all 0.3s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\''+POS_SHADOW_HOVER+'\';" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\''+POS_SHADOW+'\';"><i class="fas fa-arrow-up"></i></button>' +
 
 '</div>';
 }else{
@@ -1867,33 +1858,33 @@ var creditDisplay = '';
 if (posCurrentClient && posCurrentClient.id) {
 creditDisplay = '<div id="clientCreditDisplay" style="font-size:20px;font-weight:700;padding:2px 0;text-align:right;"></div>';
 }
-h+='<div class="pos-cart-header" style="padding:6px 10px;border-bottom:1px solid var(--border);flex-shrink:0;"><h3 style="font-size:'+(isMobile?'16px':'0.85rem')+';"><i class="fas fa-credit-card"></i> Paiement</h3></div><div class="pos-payment-form" style="padding:6px 10px;flex:1;overflow-y:auto;max-height:400px;"><div style="margin-bottom:3px;">' +
-'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">' +
-'<label style="font-size:'+(isMobile?'12px':'0.7rem')+';font-weight:600;flex-shrink:0;">Client</label>' +
-'<button onclick="posAjouterNouveauClient()" style="background:#8B5CF6;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:'+(isMobile?'11px':'0.7rem')+';font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0;transition:all 0.2s;" onmouseover="this.style.transform=\'scale(1.05)\';" onmouseout="this.style.transform=\'scale(1)\';">' +
+h+='<div class="pos-cart-header" style="padding:8px 12px;border-bottom:1px solid var(--border);flex-shrink:0;"><h3 style="font-size:'+(isMobile?'16px':'0.95rem')+';color:'+POS_PRIMARY_DARK+';"><i class="fas fa-credit-card"></i> Paiement</h3></div><div class="pos-payment-form" style="padding:8px 12px;flex:1;overflow-y:auto;max-height:400px;"><div style="margin-bottom:6px;">' +
+'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">' +
+'<label style="font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:700;flex-shrink:0;color:'+POS_PRIMARY_DARK+';">Client</label>' +
+'<button onclick="posAjouterNouveauClient()" style="background:linear-gradient(135deg, #8B5CF6, #7C3AED);color:#fff;border:none;border-radius:8px;padding:5px 14px;font-size:'+(isMobile?'11px':'0.75rem')+';font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0;transition:all 0.2s;box-shadow:0 4px 14px rgba(139, 92, 246, 0.3);" onmouseover="this.style.transform=\'translateY(-1px)\';" onmouseout="this.style.transform=\'translateY(0)\';">' +
 '<i class="fas fa-plus" style="font-size:'+(isMobile?'10px':'0.65rem')+';"></i> Nouveau' +
 '</button>' +
 '</div>' +
 '<div style="position:relative;">' +
-'<div style="display:flex;align-items:center;background:#fff;border:2px solid #e2e8f0;border-radius:6px;padding:2px 8px;position:relative;">' +
+'<div style="display:flex;align-items:center;background:#fff;border:2px solid var(--border);border-radius:10px;padding:4px 10px;position:relative;transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 83, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';">' +
 '<input type="text" id="posClientSearchInput" placeholder="🔍 Cliquez et tapez..." onkeyup="posSearchClient(this.value)" onfocus="if(this.value)posSearchClient(this.value)" autocomplete="off" value="'+(posCurrentClient?escapeHtml(posCurrentClient.name):'')+'" style="border:none;outline:none;padding:4px 0;width:100%;background:transparent;font-size:18px !important;font-weight:700 !important;padding-right:24px;">' +
 '<button id="posClientClearBtn" onclick="clearClientSearch()" style="display:'+((posCurrentClient && posCurrentClient.name) ? 'flex' : 'none')+';position:absolute;right:4px;background:none;border:none;cursor:pointer;padding:2px;color:#94a3b8;font-size:1rem;align-items:center;justify-content:center;" title="Effacer le client"><i class="fas fa-times-circle"></i></button>' +
 '</div>' +
-'<div id="posClientDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:2px solid #e2e8f0;border-radius:0 0 6px 6px;max-height:150px;overflow-y:auto;z-index:50;"></div>' +
-'</div>'+creditDisplay+'</div><div style="margin:2px 0;font-size:0.5rem;text-align:center;">— OU —</div><div style="margin-bottom:3px;"><label style="font-size:'+(isMobile?'12px':'0.7rem')+';font-weight:600;">Table</label><input type="text" id="posTableNum" value="'+escapeHtml(posCurrentTable)+'" onchange="posSetTable(this.value)" style="width:100%;padding:4px;border:2px solid #e2e8f0;border-radius:4px;font-size:'+(isMobile?'14px':'0.85rem')+';"></div><div style="margin-bottom:3px;"><div style="padding:4px;background:#f8fafc;border-radius:4px;">' +
-'<div style="font-size:'+(isMobile?'18px':'20px')+';font-weight:600;">Articles: '+posCart.length+'</div>' +
-(posDiscountMAD>0?'<div style="color:#ef4444;font-size:'+(isMobile?'16px':'18px')+';">Remise: -'+posDiscountMAD.toFixed(2)+'</div>':'') +
-'<div style="font-size:'+(isMobile?'18px':'20px')+';font-weight:700;">Total: '+t.toFixed(2)+' MAD</div></div></div><div style="margin-bottom:3px;"><label style="font-size:'+(isMobile?'12px':'0.7rem')+';font-weight:600;">Vendeur</label><input type="text" id="posVendeur" value="'+(window.currentUserData?escapeHtml(window.currentUserData.userData.prenom+' '+window.currentUserData.userData.nom):'')+'" style="width:100%;padding:4px;border:2px solid #e2e8f0;border-radius:4px;font-size:'+(isMobile?'14px':'0.85rem')+';"></div><div style="margin-bottom:3px;"><div style="display:flex;gap:3px;">' +
-'<button class="pos-payment-btn '+(posPaymentMethod==='espece'?'active':'')+'" onclick="posSetPaymentMethod(\'espece\')" style="font-size:'+(isMobile?'14px':'0.9rem')+' !important;font-weight:700 !important;padding:6px 10px;height:auto;min-height:36px;"><i class="fas fa-money-bill-wave"></i> Espèces</button>' +
-'<button class="pos-payment-btn '+(posPaymentMethod==='credit'?'active':'')+'" onclick="posSetPaymentMethod(\'credit\')" id="posCreditBtn" '+(canCredit?'':'disabled style="opacity:0.4;"')+' style="font-size:'+(isMobile?'14px':'0.9rem')+' !important;font-weight:700 !important;padding:6px 10px;height:auto;min-height:36px;"><i class="fas fa-credit-card"></i> Crédit</button>' +
-'<button class="pos-payment-btn '+(posPaymentMethod==='partiel'?'active':'')+'" onclick="posSetPaymentMethod(\'partiel\')" id="posPartielBtn" '+(canCredit?'':'disabled style="opacity:0.4;"')+' style="font-size:'+(isMobile?'14px':'0.9rem')+' !important;font-weight:700 !important;padding:6px 10px;height:auto;min-height:36px;"><i class="fas fa-hand-holding-usd"></i> Partiel</button>' +
+'<div id="posClientDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:2px solid '+POS_PRIMARY+';border-radius:0 0 10px 10px;max-height:150px;overflow-y:auto;z-index:50;box-shadow:0 8px 24px rgba(0, 200, 83, 0.15);"></div>' +
+'</div>'+creditDisplay+'</div><div style="margin:4px 0;font-size:0.7rem;text-align:center;color:var(--text-muted);font-weight:600;">— OU —</div><div style="margin-bottom:6px;"><label style="font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:700;color:'+POS_PRIMARY_DARK+';">Table</label><input type="text" id="posTableNum" value="'+escapeHtml(posCurrentTable)+'" onchange="posSetTable(this.value)" style="width:100%;padding:6px 10px;border:2px solid var(--border);border-radius:8px;font-size:'+(isMobile?'14px':'0.85rem')+';font-weight:600;transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 83, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';"></div><div style="margin-bottom:6px;"><div style="padding:8px 12px;background:'+POS_LIGHT_BG+';border-radius:10px;border:1px solid '+POS_PRIMARY+';">' +
+'<div style="font-size:'+(isMobile?'16px':'18px')+';font-weight:600;color:var(--text-secondary);">Articles: <strong style="color:'+POS_PRIMARY_DARK+';">'+posCart.length+'</strong></div>' +
+(posDiscountMAD>0?'<div style="color:#ef4444;font-size:'+(isMobile?'14px':'16px')+';font-weight:600;">Remise: -'+posDiscountMAD.toFixed(2)+' MAD</div>':'') +
+'<div style="font-size:'+(isMobile?'20px':'22px')+';font-weight:800;color:'+POS_PRIMARY_DARK+';margin-top:4px;">Total: '+t.toFixed(2)+' MAD</div></div></div><div style="margin-bottom:6px;"><label style="font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:700;color:'+POS_PRIMARY_DARK+';">Vendeur</label><input type="text" id="posVendeur" value="'+(window.currentUserData?escapeHtml(window.currentUserData.userData.prenom+' '+window.currentUserData.userData.nom):'')+'" style="width:100%;padding:6px 10px;border:2px solid var(--border);border-radius:8px;font-size:'+(isMobile?'14px':'0.85rem')+';font-weight:600;transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 83, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';"></div><div style="margin-bottom:8px;"><div style="display:flex;gap:4px;">' +
+'<button class="pos-payment-btn '+(posPaymentMethod==='espece'?'active':'')+'" onclick="posSetPaymentMethod(\'espece\')" style="font-size:'+(isMobile?'14px':'0.9rem')+' !important;font-weight:700 !important;padding:8px 12px;height:auto;min-height:42px;border-radius:10px;flex:1;background:'+(posPaymentMethod==='espece'?POS_GRADIENT:'var(--bg-card)')+';color:'+(posPaymentMethod==='espece'?'#fff':'var(--text-primary)')+';border:2px solid '+(posPaymentMethod==='espece'?'transparent':POS_PRIMARY)+';cursor:pointer;transition:all 0.2s;box-shadow:'+(posPaymentMethod==='espece'?POS_SHADOW:'none')+';"><i class="fas fa-money-bill-wave"></i> Espèces</button>' +
+'<button class="pos-payment-btn '+(posPaymentMethod==='credit'?'active':'')+'" onclick="posSetPaymentMethod(\'credit\')" id="posCreditBtn" '+(canCredit?'':'disabled')+' style="font-size:'+(isMobile?'14px':'0.9rem')+' !important;font-weight:700 !important;padding:8px 12px;height:auto;min-height:42px;border-radius:10px;flex:1;background:'+(posPaymentMethod==='credit'?POS_GRADIENT:'var(--bg-card)')+';color:'+(posPaymentMethod==='credit'?'#fff':'var(--text-primary)')+';border:2px solid '+(posPaymentMethod==='credit'?'transparent':POS_PRIMARY)+';cursor:'+(canCredit?'pointer':'not-allowed')+';opacity:'+(canCredit?'1':'0.4')+';transition:all 0.2s;box-shadow:'+(posPaymentMethod==='credit'?POS_SHADOW:'none')+';"><i class="fas fa-credit-card"></i> Crédit</button>' +
+'<button class="pos-payment-btn '+(posPaymentMethod==='partiel'?'active':'')+'" onclick="posSetPaymentMethod(\'partiel\')" id="posPartielBtn" '+(canCredit?'':'disabled')+' style="font-size:'+(isMobile?'14px':'0.9rem')+' !important;font-weight:700 !important;padding:8px 12px;height:auto;min-height:42px;border-radius:10px;flex:1;background:'+(posPaymentMethod==='partiel'?POS_GRADIENT:'var(--bg-card)')+';color:'+(posPaymentMethod==='partiel'?'#fff':'var(--text-primary)')+';border:2px solid '+(posPaymentMethod==='partiel'?'transparent':POS_PRIMARY)+';cursor:'+(canCredit?'pointer':'not-allowed')+';opacity:'+(canCredit?'1':'0.4')+';transition:all 0.2s;box-shadow:'+(posPaymentMethod==='partiel'?POS_SHADOW:'none')+';"><i class="fas fa-hand-holding-usd"></i> Partiel</button>' +
 '</div></div>';
 if(posPaymentMethod==='espece'||posPaymentMethod==='partiel') {
-h+='<div style="margin-bottom:3px;"><label style="font-size:'+(isMobile?'12px':'0.7rem')+';font-weight:600;">Montant donné</label><input type="number" id="posAmountGiven" placeholder="0.00" value="'+(posAmountGiven>0?posAmountGiven:'')+'" onkeyup="posCalculateChange()" style="width:100%;padding:6px;border:2px solid #e2e8f0;border-radius:4px;font-size:24px !important;font-weight:700 !important;"><div id="posChangeDisplay" style="font-size:22px;font-weight:700;padding:2px 0;margin-right:6px;"></div></div>';
+h+='<div style="margin-bottom:6px;"><label style="font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:700;color:'+POS_PRIMARY_DARK+';">Montant donné</label><input type="number" id="posAmountGiven" placeholder="0.00" value="'+(posAmountGiven>0?posAmountGiven:'')+'" onkeyup="posCalculateChange()" style="width:100%;padding:10px 12px;border:2px solid var(--border);border-radius:10px;font-size:24px !important;font-weight:700 !important;color:'+POS_PRIMARY_DARK+';transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 83, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';"><div id="posChangeDisplay" style="font-size:22px;font-weight:700;padding:4px 0;margin-right:6px;"></div></div>';
 }
-h+='<button class="pos-finalize-btn" onclick="posFinalizeSale()" style="width:100%;padding:8px;margin-top:4px;background:#14B8A6;color:#fff;border:none;border-radius:8px;font-size:16px !important;font-weight:700 !important;min-height:40px;margin-bottom:12px;"><i class="fas fa-check-circle"></i> Finaliser</button>' +
+h+='<button class="pos-finalize-btn" onclick="posFinalizeSale()" style="width:100%;padding:12px;margin-top:6px;background:'+POS_GRADIENT+';color:#fff;border:none;border-radius:10px;font-size:16px !important;font-weight:700 !important;min-height:46px;margin-bottom:16px;box-shadow:'+POS_SHADOW+';transition:all 0.2s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\''+POS_SHADOW_HOVER+'\';" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\''+POS_SHADOW+'\';"><i class="fas fa-check-circle"></i> Finaliser</button>' +
 
-'<button onclick="document.querySelector(\'.pos-steps-nav\').scrollIntoView({behavior:\'smooth\',block:\'start\'})" style="position:fixed;bottom:20px;right:20px;width:70px;height:70px;border-radius:50%;background:#14B8A6;color:#fff;border:none;font-size:28px;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,0.25);z-index:9999;display:flex;align-items:center;justify-content:center;transition:all 0.3s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 6px 25px rgba(0,0,0,0.35)\';" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'0 4px 15px rgba(0,0,0,0.25)\';"><i class="fas fa-arrow-up"></i></button>' +
+'<button onclick="document.querySelector(\'.pos-steps-nav\').scrollIntoView({behavior:\'smooth\',block:\'start\'})" style="position:fixed;bottom:20px;right:20px;width:70px;height:70px;border-radius:50%;background:'+POS_GRADIENT+';color:#fff;border:none;font-size:28px;cursor:pointer;box-shadow:'+POS_SHADOW+';z-index:9999;display:flex;align-items:center;justify-content:center;transition:all 0.3s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\''+POS_SHADOW_HOVER+'\';" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\''+POS_SHADOW+'\';"><i class="fas fa-arrow-up"></i></button>' +
 
 '</div>';
 }
@@ -1912,7 +1903,8 @@ toolsContainer.style.display = posToolsVisible ? 'flex' : 'none';
 }
 if (toggleBtn) {
 toggleBtn.innerHTML = posToolsVisible ? '✕ Masquer tout' : '🔍 Afficher tout';
-toggleBtn.style.background = posToolsVisible ? '#ef4444' : '#14B8A6';
+toggleBtn.style.background = posToolsVisible ? 'linear-gradient(135deg, #EF4444, #DC2626)' : POS_GRADIENT;
+toggleBtn.style.boxShadow = posToolsVisible ? '0 4px 14px rgba(239, 68, 68, 0.3)' : POS_SHADOW;
 }
 }
 if(posStep===2) {
@@ -1958,7 +1950,6 @@ setStaticBackButtonVisibility(true);
 if (posCurrentClient && posCurrentClient.id) {
 updateClientCreditDisplay(posCurrentClient.id);
 }
-// 🔥 CORRECTION : réinitialiser le mode quantité AVANT de passer en mode paiement
 if (typeof window.resetVoiceQuantityMode === 'function') {
     window.resetVoiceQuantityMode();
 }
@@ -2002,7 +1993,7 @@ posAmountGiven=parseFloat(ai.value)||0;
 var c=posAmountGiven-t;
 if(posAmountGiven>0) {
 if(c>=0) {
-cd.innerHTML='<div style="font-size:24px;font-weight:700;color:#16a34a;display:flex;align-items:center;justify-content:flex-start;"><span>✅ Rendu</span><span style="margin-left:12px;margin-right:12px;">'+c.toFixed(2)+' MAD</span></div>';
+cd.innerHTML='<div style="font-size:24px;font-weight:700;color:'+POS_PRIMARY+';display:flex;align-items:center;justify-content:flex-start;"><span>✅ Rendu</span><span style="margin-left:12px;margin-right:12px;">'+c.toFixed(2)+' MAD</span></div>';
 } else {
 cd.innerHTML='<div style="font-size:24px;font-weight:700;color:#ef4444;display:flex;align-items:center;justify-content:flex-start;"><span>❌ Manquant</span><span style="margin-left:12px;margin-right:12px;">'+Math.abs(c).toFixed(2)+' MAD</span></div>';
 }
@@ -2197,41 +2188,41 @@ btn.style.display = (input.value && input.value.length > 0) ? 'flex' : 'none';
 
 function goBackToPOS(){ if(window.currentUserData&&(window.currentUserData.userData.role==='caissier'||window.currentUserData.userData.role==='admin')){ if(posCart.length>0&&posStep===1){ if(!confirm('⚠️ '+posCart.length+' article(s) dans le panier. Garder ?')) posResetCart(); } navigateTo('pos'); } }
 
-// ==================== AJOUT RAPIDE D'UN NOUVEAU CLIENT (COMPATIBLE ADMIN-CRUD) ====================
+// ==================== AJOUT RAPIDE CLIENT - DESIGN VERT ====================
 function posAjouterNouveauClient() {
     var modalHtml = `
         <div style="padding:10px;">
-            <h3 style="margin-bottom:15px;font-size:1.3rem;display:flex;align-items:center;gap:10px;">
-                <i class="fas fa-user-plus" style="color:#14B8A6;"></i> Ajouter un nouveau client
+            <h3 style="margin-bottom:15px;font-size:1.3rem;display:flex;align-items:center;gap:10px;color:${POS_PRIMARY_DARK};">
+                <i class="fas fa-user-plus" style="color:${POS_PRIMARY};"></i> Ajouter un nouveau client
             </h3>
             <p style="color:#64748b;font-size:0.9rem;margin-bottom:15px;">Remplissez les informations ci-dessous. Seuls le nom et prénom sont obligatoires.</p>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 <div>
-                    <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:4px;">Prénom *</label>
-                    <input type="text" id="posNewClientPrenom" placeholder="Prénom" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:1rem;">
+                    <label style="font-weight:700;font-size:0.85rem;display:block;margin-bottom:4px;color:${POS_PRIMARY_DARK};">Prénom *</label>
+                    <input type="text" id="posNewClientPrenom" placeholder="Prénom" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 83, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
                 </div>
                 <div>
-                    <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:4px;">Nom *</label>
-                    <input type="text" id="posNewClientNom" placeholder="Nom" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:1rem;">
+                    <label style="font-weight:700;font-size:0.85rem;display:block;margin-bottom:4px;color:${POS_PRIMARY_DARK};">Nom *</label>
+                    <input type="text" id="posNewClientNom" placeholder="Nom" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 83, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
                 </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
                 <div>
-                    <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:4px;">Téléphone</label>
-                    <input type="text" id="posNewClientTelephone" placeholder="Téléphone" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:1rem;">
+                    <label style="font-weight:700;font-size:0.85rem;display:block;margin-bottom:4px;color:${POS_PRIMARY_DARK};">Téléphone</label>
+                    <input type="text" id="posNewClientTelephone" placeholder="Téléphone" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 83, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
                 </div>
                 <div>
-                    <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:4px;">Email</label>
-                    <input type="email" id="posNewClientEmail" placeholder="Email" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:1rem;">
+                    <label style="font-weight:700;font-size:0.85rem;display:block;margin-bottom:4px;color:${POS_PRIMARY_DARK};">Email</label>
+                    <input type="email" id="posNewClientEmail" placeholder="Email" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 83, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
                 </div>
             </div>
             <div style="margin-top:10px;">
-                <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:4px;">Adresse</label>
-                <input type="text" id="posNewClientAdresse" placeholder="Adresse" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:1rem;">
+                <label style="font-weight:700;font-size:0.85rem;display:block;margin-bottom:4px;color:${POS_PRIMARY_DARK};">Adresse</label>
+                <input type="text" id="posNewClientAdresse" placeholder="Adresse" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 83, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
             </div>
             <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:18px;">
-                <button class="btn-cancel" onclick="closeModal()" style="padding:12px 24px;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1rem;background:#e2e8f0;">Annuler</button>
-                <button id="posConfirmNewClientBtn" style="background:#14B8A6;color:#fff;border:none;border-radius:8px;padding:12px 28px;cursor:pointer;font-weight:700;font-size:1rem;display:flex;align-items:center;gap:8px;">
+                <button class="btn-cancel" onclick="closeModal()" style="padding:12px 24px;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-size:1rem;background:#e2e8f0;">Annuler</button>
+                <button id="posConfirmNewClientBtn" style="background:${POS_GRADIENT};color:#fff;border:none;border-radius:10px;padding:12px 28px;cursor:pointer;font-weight:700;font-size:1rem;display:flex;align-items:center;gap:8px;box-shadow:${POS_SHADOW};transition:all 0.2s;">
                     <i class="fas fa-check"></i> Ajouter
                 </button>
             </div>
@@ -2374,7 +2365,7 @@ async function posConfirmerAjoutClient() {
     }
 }
 
-// ==================== CORRECTION MOBILE PANIER EN BAS ====================
+// ==================== CORRECTION MOBILE ====================
 function corrigerDispositionMobile() {
 if (window.innerWidth <= 700) {
 var row = document.querySelector('.pos-row');
@@ -2430,7 +2421,6 @@ window.posToolsVisible = posToolsVisible;
 window.applyDynamicContentScroll = applyDynamicContentScroll;
 window.forceUpdateClient = forceUpdateClient;
 window.corrigerDispositionMobile = corrigerDispositionMobile;
-// Multi-paniers
 window.posMultiCarts = posMultiCarts;
 window.posCurrentCartId = posCurrentCartId;
 window.posMultiCartCounter = posMultiCartCounter;
@@ -2446,16 +2436,16 @@ window.posGetTotalAllCarts = posGetTotalAllCarts;
 window.posSauvegarderDonneesPanier = posSauvegarderDonneesPanier;
 window.posRestaurerDonneesPanier = posRestaurerDonneesPanier;
 window.posChargerToutesDonneesPaniers = posChargerToutesDonneesPaniers;
-// Ajout rapide client
 window.posAjouterNouveauClient = posAjouterNouveauClient;
 window.posConfirmerAjoutClient = posConfirmerAjoutClient;
 
 console.log('🚀 E-SOLUTION - POS chargé avec corrections');
+console.log('🎨 Design vert vif #00C853 appliqué');
 console.log('✅ forceUpdateClient disponible');
 console.log('✅ Bouton "Afficher tout" corrigé');
 console.log('✅ Correction mobile panier en bas');
 console.log('✅ Crédit client cliquable - REDIRECTION VERS PAGE CRÉDITS AVEC SAUVEGARDE D\'ÉTAT');
-console.log('✅ Catégories actives : texte noir sur fond blanc');
+console.log('✅ Catégories actives : texte noir sur fond blanc + bordure verte');
 console.log('✅ Multi-paniers activé - ' + Object.keys(posMultiCarts).length + ' panier(s) disponible(s)');
 console.log('✅ Chaque panier sauvegarde son propre client, table, paiement, remise, montant donné');
 console.log('✅ Ajout rapide de client avec bouton "Nouveau" dans la section paiement');
