@@ -110,23 +110,29 @@ transition: background 0.3s ease, color 0.3s ease;
 ::-webkit-scrollbar-thumb:hover { background: var(--gray-400); }
 
 /* ==================== LOGIN / REGISTER ==================== */
+/* ✅ MODIFIÉ : .login-wrapper utilise background.png */
 .login-wrapper {
 min-height: 100vh;
 min-height: 100dvh;
 display: flex;
 align-items: center;
 justify-content: center;
-background: var(--bg-dark);
+background-image: url('background.png');
+background-size: cover;
+background-position: center;
+background-repeat: no-repeat;
+background-attachment: fixed;
 position: relative;
 padding: 20px;
 overflow: hidden;
 }
 
+/* ✅ MODIFIÉ : voile sombre au lieu du halo teal */
 .login-wrapper::before {
 content: '';
 position: absolute;
 inset: 0;
-background: radial-gradient(ellipse at 50% 50%, rgba(20,184,166,0.06), transparent 70%);
+background: rgba(10, 13, 18, 0.55);
 z-index: 1;
 }
 
@@ -2855,5 +2861,14 @@ opacity: 1 !important;
     .brand-icon {
         width: 150px !important;
         height: 150px !important;
+    }
+}
+
+/* ==================== BACKGROUND MOBILE - ÉVITE LE BUG iOS ==================== */
+@media (max-width: 768px) {
+    .login-wrapper {
+        background-attachment: scroll;
+        background-size: cover;
+        background-position: center center;
     }
 }
