@@ -1,26 +1,5 @@
-// ==================== POS.JS - E-SOLUTION (VERSION COMPLÈTE AVEC MODE CATÉGORIES) ====================
-// Point de vente complet avec mode catégories
-// ✅ Nom produit peut sauter à la ligne
-// ✅ Image taille fixe et conteneur agrandi
-// ✅ Pas de scroll horizontal
-// ✅ Panier 20% - Produits 80% en hauteur
-// ✅ Espace en dessous du bouton Valider
-// ✅ Clic sur "Panier" scroll vers le bas
-// ✅ Bouton flèche ↑ scroll vers le haut
-// ✅ Vente impossible si panier vide
-// ✅ Retour automatique à l'étape 1 après finalisation
-// ✅ CA et Profit client mis à jour (FORCE UPDATE)
-// ✅ Bouton "Afficher tout" corrigé
-// ✅ Affichage crédit client cliquable - REDIRECTION VERS PAGE CRÉDITS AVEC SAUVEGARDE D'ÉTAT
-// ✅ MULTI-PANIERS : Chaque panier sauvegarde son propre client, table, paiement, remise, montant donné
-// ✅ LIMITE À 5 PANIERS MAXIMUM
-// ✅ AFFICHAGE CORRECT DES PRODUITS ET NAVIGATION FLUIDE ENTRE PANIERS
-// ✅ SUPPRESSION IMMÉDIATE DES PANIERS AVEC RE-RENDU COMPLET
-// ✅ RÉORGANISATION DES NUMÉROS DE PANIERS (1 À 5)
-// ✅ BARRE CATÉGORIES SLIDE SUPPRIMÉE DÉFINITIVEMENT
-// ✅ BOUTONS TABLES/EN LIGNE MASQUÉS POUR LE CLIENT
-// ⚡ OPTIMISATIONS : cache recherche + content-visibility + batch 30 + debounce 80ms
-// 🎨 DESIGN : couleurs vert vif #00C853 (cohérent avec style.css)
+// ==================== POS.JS - E-SOLUTION (COMPLET) ====================
+// 🎨 Couleur : émeraude #00C896 (fidèle à l'image de référence)
 
 var posCart = [];
 var posStep = 1;
@@ -79,102 +58,50 @@ var posCurrentCartId = 'panier1';
 var posMultiCartCounter = 1;
 
 var posMultiPaniersData = {};
-
 var MAX_PANIERS = 5;
 
-// 🎨 COULEURS CENTRALISÉES (vert vif #00C853)
-var POS_PRIMARY = '#00C853';
-var POS_PRIMARY_DARK = '#00A344';
-var POS_GRADIENT = 'linear-gradient(135deg, #00C853 0%, #00B894 100%)';
-var POS_GRADIENT_HOVER = 'linear-gradient(135deg, #00B894 0%, #00A344 100%)';
-var POS_SHADOW = '0 4px 14px rgba(0, 200, 83, 0.30)';
-var POS_SHADOW_HOVER = '0 8px 24px rgba(0, 200, 83, 0.40)';
-var POS_LIGHT_BG = '#f0fdf4';
+// 🎨 COULEURS ÉMERAUDE #00C896
+var POS_PRIMARY = '#00C896';
+var POS_PRIMARY_DARK = '#00A87A';
+var POS_GRADIENT = 'linear-gradient(135deg, #00C896 0%, #00B894 100%)';
+var POS_GRADIENT_HOVER = 'linear-gradient(135deg, #00B894 0%, #00A87A 100%)';
+var POS_SHADOW = '0 4px 14px rgba(0, 200, 150, 0.30)';
+var POS_SHADOW_HOVER = '0 8px 24px rgba(0, 200, 150, 0.40)';
+var POS_LIGHT_BG = '#E0F7EE';
 
 // ======================================================
-// ✅ FONCTION DE FORCE POUR METTRE À JOUR LE CLIENT
+// ✅ FORCE UPDATE CLIENT
 // ======================================================
 async function forceUpdateClient(clientId, total, profitTotal) {
 try {
 console.log('🔥 FORCE UPDATE CLIENT:', clientId);
-console.log(' - CA à ajouter:', total);
-console.log(' - Profit à ajouter:', profitTotal);
-
-if (!clientId) {
-console.warn('⚠️ Client ID manquant');
-return false;
-}
-
+if (!clientId) { console.warn('⚠️ Client ID manquant'); return false; }
 const docRef = db.collection('clients').doc(clientId);
 const doc = await docRef.get();
-
-if (!doc.exists) {
-console.error('❌ Client non trouvé:', clientId);
-return false;
-}
-
+if (!doc.exists) { console.error('❌ Client non trouvé:', clientId); return false; }
 const data = doc.data();
 const ancienCA = data.ca || 0;
 const ancienProfit = data.profit || 0;
 const nouveauCA = ancienCA + total;
 const nouveauProfit = ancienProfit + profitTotal;
-
-console.log(' - Ancien CA:', ancienCA, '→ Nouveau CA:', nouveauCA);
-console.log(' - Ancien Profit:', ancienProfit, '→ Nouveau Profit:', nouveauProfit);
-
 await docRef.update({
 ca: nouveauCA,
 profit: nouveauProfit,
 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
 });
-console.log('✅ Firestore mis à jour');
-
-const updatedData = {
-...data,
-ca: nouveauCA,
-profit: nouveauProfit,
-updatedAt: new Date()
-};
+const updatedData = { ...data, ca: nouveauCA, profit: nouveauProfit, updatedAt: new Date() };
 await CacheDB.set('clients', clientId, updatedData);
-console.log('✅ Cache mis à jour');
-
 const clientIndex = posAllClients.findIndex(c => c.id === clientId);
-if (clientIndex !== -1) {
-posAllClients[clientIndex].ca = nouveauCA;
-posAllClients[clientIndex].profit = nouveauProfit;
-console.log('✅ posAllClients mis à jour');
-}
-
+if (clientIndex !== -1) { posAllClients[clientIndex].ca = nouveauCA; posAllClients[clientIndex].profit = nouveauProfit; }
 const filteredIndex = posFilteredClients.findIndex(c => c.id === clientId);
-if (filteredIndex !== -1) {
-posFilteredClients[filteredIndex].ca = nouveauCA;
-posFilteredClients[filteredIndex].profit = nouveauProfit;
-}
-
-if (posCurrentClient && posCurrentClient.id === clientId) {
-posCurrentClient.ca = nouveauCA;
-posCurrentClient.profit = nouveauProfit;
-console.log('✅ posCurrentClient mis à jour');
-}
-
+if (filteredIndex !== -1) { posFilteredClients[filteredIndex].ca = nouveauCA; posFilteredClients[filteredIndex].profit = nouveauProfit; }
+if (posCurrentClient && posCurrentClient.id === clientId) { posCurrentClient.ca = nouveauCA; posCurrentClient.profit = nouveauProfit; }
 if (window.allClientsData) {
 const adminIndex = window.allClientsData.findIndex(c => c.id === clientId);
-if (adminIndex !== -1) {
-window.allClientsData[adminIndex].ca = nouveauCA;
-window.allClientsData[adminIndex].profit = nouveauProfit;
-console.log('✅ window.allClientsData mis à jour');
+if (adminIndex !== -1) { window.allClientsData[adminIndex].ca = nouveauCA; window.allClientsData[adminIndex].profit = nouveauProfit; }
 }
-}
-
-console.log('✅ Client mis à jour avec succès !');
-console.log('📊 NOUVELLES VALEURS - CA:', nouveauCA, 'Profit:', nouveauProfit);
-
 return true;
-
-} catch(e) {
-console.error('❌ Erreur forceUpdateClient:', e);
-return false;
-}
+} catch(e) { console.error('❌ Erreur forceUpdateClient:', e); return false; }
 }
 
 function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g,function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
@@ -193,15 +120,9 @@ btn.style.display = visible ? 'block' : 'none';
 }
 
 // ==================== MULTI-PANIERS ====================
-
 function posSauvegarderDonneesPanier(cartId) {
     posMultiPaniersData[cartId] = {
-        client: posCurrentClient ? { 
-            id: posCurrentClient.id, 
-            name: posCurrentClient.name,
-            ca: posCurrentClient.ca || 0,
-            profit: posCurrentClient.profit || 0
-        } : null,
+        client: posCurrentClient ? { id: posCurrentClient.id, name: posCurrentClient.name, ca: posCurrentClient.ca || 0, profit: posCurrentClient.profit || 0 } : null,
         table: posCurrentTable || '',
         paymentMethod: posPaymentMethod || 'espece',
         discountMAD: posDiscountMAD || 0,
@@ -221,44 +142,18 @@ function posRestaurerDonneesPanier(cartId) {
         posStep = data.step || 1;
         return true;
     }
-    posCurrentClient = null;
-    posCurrentTable = '';
-    posPaymentMethod = 'espece';
-    posDiscountMAD = 0;
-    posAmountGiven = 0;
-    posStep = 1;
+    posCurrentClient = null; posCurrentTable = ''; posPaymentMethod = 'espece'; posDiscountMAD = 0; posAmountGiven = 0; posStep = 1;
     return false;
 }
 
 function posChargerToutesDonneesPaniers() {
     try {
         var allData = localStorage.getItem('posMultiPaniersData');
-        if (allData) {
-            posMultiPaniersData = JSON.parse(allData);
-        } else {
-            posMultiPaniersData = {
-                'panier1': {
-                    client: null,
-                    table: '',
-                    paymentMethod: 'espece',
-                    discountMAD: 0,
-                    amountGiven: 0,
-                    step: 1
-                }
-            };
-        }
+        if (allData) { posMultiPaniersData = JSON.parse(allData); }
+        else { posMultiPaniersData = { 'panier1': { client: null, table: '', paymentMethod: 'espece', discountMAD: 0, amountGiven: 0, step: 1 } }; }
     } catch(e) {
         console.warn('⚠️ Erreur chargement données paniers:', e);
-        posMultiPaniersData = {
-            'panier1': {
-                client: null,
-                table: '',
-                paymentMethod: 'espece',
-                discountMAD: 0,
-                amountGiven: 0,
-                step: 1
-            }
-        };
+        posMultiPaniersData = { 'panier1': { client: null, table: '', paymentMethod: 'espece', discountMAD: 0, amountGiven: 0, step: 1 } };
     }
 }
 
@@ -270,37 +165,24 @@ function posLoadMultiCarts() {
             posMultiCarts = data.carts || {};
             posCurrentCartId = data.currentId || 'panier1';
             posMultiCartCounter = data.counter || 1;
-            
             if (!posMultiCarts[posCurrentCartId]) {
                 var keys = Object.keys(posMultiCarts);
                 posCurrentCartId = keys.length > 0 ? keys[0] : 'panier1';
                 if (!posMultiCarts['panier1']) posMultiCarts['panier1'] = [];
             }
-            
             posChargerToutesDonneesPaniers();
-            
             posCart = posMultiCarts[posCurrentCartId] || [];
             window.posCart = posCart;
             posRestaurerDonneesPanier(posCurrentCartId);
             return true;
         }
     } catch(e) { console.warn('⚠️ Erreur chargement multi-paniers:', e); }
-    
     posMultiCarts = { 'panier1': [] };
     posCurrentCartId = 'panier1';
     posMultiCartCounter = 1;
     posCart = [];
     window.posCart = posCart;
-    posMultiPaniersData = {
-        'panier1': {
-            client: null,
-            table: '',
-            paymentMethod: 'espece',
-            discountMAD: 0,
-            amountGiven: 0,
-            step: 1
-        }
-    };
+    posMultiPaniersData = { 'panier1': { client: null, table: '', paymentMethod: 'espece', discountMAD: 0, amountGiven: 0, step: 1 } };
     return false;
 }
 
@@ -310,11 +192,7 @@ function posSaveMultiCarts() {
         posSauvegarderDonneesPanier(posCurrentCartId);
     }
     try {
-        localStorage.setItem('posMultiCarts', JSON.stringify({
-            carts: posMultiCarts,
-            currentId: posCurrentCartId,
-            counter: posMultiCartCounter
-        }));
+        localStorage.setItem('posMultiCarts', JSON.stringify({ carts: posMultiCarts, currentId: posCurrentCartId, counter: posMultiCartCounter }));
         localStorage.setItem('posMultiPaniersData', JSON.stringify(posMultiPaniersData));
     } catch(e) { console.warn('⚠️ Erreur sauvegarde multi-paniers:', e); }
 }
@@ -328,30 +206,16 @@ function posReorganiserNumerosPaniers() {
         posSaveMultiCarts();
         return;
     }
-    
-    cartKeys.sort(function(a, b) {
-        var numA = parseInt(a.replace('panier', ''));
-        var numB = parseInt(b.replace('panier', ''));
-        return numA - numB;
-    });
-    
-    var newCarts = {};
-    var newData = {};
-    var targetIndex = 1;
-    
+    cartKeys.sort(function(a, b) { return parseInt(a.replace('panier', '')) - parseInt(b.replace('panier', '')); });
+    var newCarts = {}, newData = {}, targetIndex = 1;
     for (var i = 0; i < cartKeys.length; i++) {
         var oldKey = cartKeys[i];
         var newKey = 'panier' + targetIndex;
         newCarts[newKey] = posMultiCarts[oldKey] || [];
-        if (posMultiPaniersData[oldKey]) {
-            newData[newKey] = posMultiPaniersData[oldKey];
-        }
-        if (posCurrentCartId === oldKey) {
-            posCurrentCartId = newKey;
-        }
+        if (posMultiPaniersData[oldKey]) { newData[newKey] = posMultiPaniersData[oldKey]; }
+        if (posCurrentCartId === oldKey) { posCurrentCartId = newKey; }
         targetIndex++;
     }
-    
     posMultiCarts = newCarts;
     posMultiPaniersData = newData;
     posMultiCartCounter = targetIndex - 1;
@@ -361,168 +225,71 @@ function posReorganiserNumerosPaniers() {
 function posCreateNewCart() {
     posMultiCarts[posCurrentCartId] = posCart.slice();
     posSauvegarderDonneesPanier(posCurrentCartId);
-    
     var cartCount = Object.keys(posMultiCarts).length;
-    if (cartCount >= MAX_PANIERS) {
-        alert('⚠️ Vous avez atteint la limite de ' + MAX_PANIERS + ' paniers maximum.');
-        return null;
-    }
-    
+    if (cartCount >= MAX_PANIERS) { alert('⚠️ Vous avez atteint la limite de ' + MAX_PANIERS + ' paniers maximum.'); return null; }
     var usedNumbers = [];
     var cartKeys = Object.keys(posMultiCarts);
     for (var k = 0; k < cartKeys.length; k++) {
         var num = parseInt(cartKeys[k].replace('panier', ''));
         if (!isNaN(num)) usedNumbers.push(num);
     }
-    
     var availableNumber = 1;
-    while (usedNumbers.includes(availableNumber) && availableNumber <= MAX_PANIERS) {
-        availableNumber++;
-    }
-    
-    if (availableNumber > MAX_PANIERS) {
-        alert('⚠️ Tous les numéros de paniers (1 à ' + MAX_PANIERS + ') sont utilisés.');
-        return null;
-    }
-    
+    while (usedNumbers.includes(availableNumber) && availableNumber <= MAX_PANIERS) { availableNumber++; }
+    if (availableNumber > MAX_PANIERS) { alert('⚠️ Tous les numéros de paniers (1 à ' + MAX_PANIERS + ') sont utilisés.'); return null; }
     var newCartId = 'panier' + availableNumber;
     posMultiCarts[newCartId] = [];
-    posMultiPaniersData[newCartId] = {
-        client: null,
-        table: '',
-        paymentMethod: 'espece',
-        discountMAD: 0,
-        amountGiven: 0,
-        step: 1
-    };
+    posMultiPaniersData[newCartId] = { client: null, table: '', paymentMethod: 'espece', discountMAD: 0, amountGiven: 0, step: 1 };
     posCurrentCartId = newCartId;
     posCart = [];
     window.posCart = posCart;
-    posCurrentClient = null;
-    posCurrentTable = '';
-    posPaymentMethod = 'espece';
-    posDiscountMAD = 0;
-    posAmountGiven = 0;
-    posStep = 1;
+    posCurrentClient = null; posCurrentTable = ''; posPaymentMethod = 'espece'; posDiscountMAD = 0; posAmountGiven = 0; posStep = 1;
     posSaveMultiCarts();
     if (isOnPOSPage()) renderPOS();
-    console.log('🆕 Nouveau panier créé:', newCartId);
     return newCartId;
 }
 
 function posSwitchToCart(cartId) {
-    if (!posMultiCarts[cartId]) { 
-        console.warn('⚠️ Panier inexistant:', cartId); 
-        return; 
-    }
-    
+    if (!posMultiCarts[cartId]) { console.warn('⚠️ Panier inexistant:', cartId); return; }
     posMultiCarts[posCurrentCartId] = posCart.slice();
     posSauvegarderDonneesPanier(posCurrentCartId);
-    
     posCurrentCartId = cartId;
     posCart = posMultiCarts[cartId] || [];
     window.posCart = posCart;
     posRestaurerDonneesPanier(cartId);
-    
     posSaveMultiCarts();
-    
     if (isOnPOSPage()) {
         var c = document.getElementById('dynamicContent');
-        if (c) {
-            buildFullPOS(c);
-        } else {
-            renderPOS();
-        }
-        
+        if (c) { buildFullPOS(c); } else { renderPOS(); }
         setTimeout(function() {
-            if (posCurrentClient && posCurrentClient.name) {
-                var ci = document.getElementById('posClientSearchInput');
-                if (ci) ci.value = posCurrentClient.name;
-            }
-            if (posCurrentTable) {
-                var ti = document.getElementById('posTableNum');
-                if (ti) ti.value = posCurrentTable;
-            }
-            if (posAmountGiven > 0) {
-                var ai = document.getElementById('posAmountGiven');
-                if (ai) ai.value = posAmountGiven.toFixed(2);
-            }
-            if (posCurrentClient && posCurrentClient.id) {
-                updateClientCreditDisplay(posCurrentClient.id);
-            }
+            if (posCurrentClient && posCurrentClient.name) { var ci = document.getElementById('posClientSearchInput'); if (ci) ci.value = posCurrentClient.name; }
+            if (posCurrentTable) { var ti = document.getElementById('posTableNum'); if (ti) ti.value = posCurrentTable; }
+            if (posAmountGiven > 0) { var ai = document.getElementById('posAmountGiven'); if (ai) ai.value = posAmountGiven.toFixed(2); }
+            if (posCurrentClient && posCurrentClient.id) { updateClientCreditDisplay(posCurrentClient.id); }
             updatePaymentButtons();
-            if (posStep === 2) {
-                posCalculateChange();
-            }
+            if (posStep === 2) { posCalculateChange(); }
         }, 300);
     }
-    console.log('🔄 Basculé vers:', cartId, 'articles:', posCart.length);
 }
 
 function posDeleteCart(cartId) {
-    console.log('🗑️ Tentative de suppression du panier:', cartId);
-    
-    if (cartId === 'panier1' && Object.keys(posMultiCarts).length === 1) {
-        alert('❌ Impossible de supprimer le dernier panier.');
-        return;
-    }
-    if (!posMultiCarts[cartId]) {
-        console.warn('⚠️ Panier inexistant:', cartId);
-        return;
-    }
-    
-    if (posCurrentCartId) {
-        posMultiCarts[posCurrentCartId] = posCart.slice();
-        posSauvegarderDonneesPanier(posCurrentCartId);
-    }
-    
+    if (cartId === 'panier1' && Object.keys(posMultiCarts).length === 1) { alert('❌ Impossible de supprimer le dernier panier.'); return; }
+    if (!posMultiCarts[cartId]) { console.warn('⚠️ Panier inexistant:', cartId); return; }
+    if (posCurrentCartId) { posMultiCarts[posCurrentCartId] = posCart.slice(); posSauvegarderDonneesPanier(posCurrentCartId); }
     delete posMultiCarts[cartId];
     delete posMultiPaniersData[cartId];
-    
     if (posCurrentCartId === cartId) {
         var keys = Object.keys(posMultiCarts);
         posCurrentCartId = keys.length > 0 ? keys[0] : 'panier1';
         posCart = posMultiCarts[posCurrentCartId] || [];
         window.posCart = posCart;
         posRestaurerDonneesPanier(posCurrentCartId);
-        console.log('🔄 Basculé vers:', posCurrentCartId);
     }
-    
     posReorganiserNumerosPaniers();
-    
     posSaveMultiCarts();
-    
     if (isOnPOSPage()) {
         var c = document.getElementById('dynamicContent');
-        if (c) {
-            buildFullPOS(c);
-        } else {
-            renderPOS();
-        }
-        
-        setTimeout(function() {
-            if (posCurrentClient && posCurrentClient.name) {
-                var ci = document.getElementById('posClientSearchInput');
-                if (ci) ci.value = posCurrentClient.name;
-            }
-            if (posCurrentTable) {
-                var ti = document.getElementById('posTableNum');
-                if (ti) ti.value = posCurrentTable;
-            }
-            if (posAmountGiven > 0) {
-                var ai = document.getElementById('posAmountGiven');
-                if (ai) ai.value = posAmountGiven.toFixed(2);
-            }
-            if (posCurrentClient && posCurrentClient.id) {
-                updateClientCreditDisplay(posCurrentClient.id);
-            }
-            updatePaymentButtons();
-            if (posStep === 2) {
-                posCalculateChange();
-            }
-        }, 100);
+        if (c) { buildFullPOS(c); } else { renderPOS(); }
     }
-    console.log('✅ Panier supprimé:', cartId, 'Paniers restants:', Object.keys(posMultiCarts).length);
 }
 
 function posResetAllCarts() {
@@ -533,12 +300,7 @@ function posResetAllCarts() {
     posMultiCartCounter = 1;
     posCart = [];
     window.posCart = posCart;
-    posCurrentClient = null;
-    posCurrentTable = '';
-    posPaymentMethod = 'espece';
-    posDiscountMAD = 0;
-    posAmountGiven = 0;
-    posStep = 1;
+    posCurrentClient = null; posCurrentTable = ''; posPaymentMethod = 'espece'; posDiscountMAD = 0; posAmountGiven = 0; posStep = 1;
     posSaveMultiCarts();
     if (isOnPOSPage()) renderPOS();
 }
@@ -548,42 +310,24 @@ function posGetTotalAllCarts() {
     for (var id in posMultiCarts) {
         if (posMultiCarts.hasOwnProperty(id)) {
             var items = posMultiCarts[id] || [];
-            for (var i = 0; i < items.length; i++) {
-                total += (items[i].prixUnitaire || 0) * (items[i].quantite || 0);
-            }
+            for (var i = 0; i < items.length; i++) { total += (items[i].prixUnitaire || 0) * (items[i].quantite || 0); }
         }
     }
     return total;
 }
 
-// ==================== PRÉCHARGEMENT ====================
 async function preloadPosData() {
 if (typeof CacheDB === 'undefined') return;
-
 try {
-const results = await Promise.allSettled([
-CacheDB.getAll('categories'),
-CacheDB.getAll('products'),
-CacheDB.getAll('clients'),
-CacheDB.getAll('stock')
-]);
-
-console.log('⚡ Données POS préchargées en parallèle:', results.length, 'collections');
-} catch(e) {
-console.warn('Erreur préchargement POS:', e);
+await Promise.allSettled([CacheDB.getAll('categories'), CacheDB.getAll('products'), CacheDB.getAll('clients'), CacheDB.getAll('stock')]);
+} catch(e) { console.warn('Erreur préchargement POS:', e); }
 }
-}
-
 preloadPosData();
 
-// ==================== TOGGLE OUTILS POS - DESIGN VERT ====================
 function posToggleTools() {
     posToolsVisible = !posToolsVisible;
     var toolsContainer = document.getElementById('posToolsContainer');
     var toggleBtn = document.getElementById('posToggleToolsBtn');
-
-    console.log('🔍 Toggle outils POS - État:', posToolsVisible);
-
     if (toolsContainer) {
         if (posToolsVisible) {
             toolsContainer.style.display = 'flex';
@@ -594,64 +338,40 @@ function posToggleTools() {
             toolsContainer.style.background = 'var(--bg-card)';
             toolsContainer.style.borderRadius = '12px';
             toolsContainer.style.border = '1px solid var(--border)';
-            toolsContainer.style.boxShadow = '0 2px 8px rgba(0, 200, 83, 0.08)';
+            toolsContainer.style.boxShadow = '0 2px 8px rgba(0, 200, 150, 0.08)';
             toolsContainer.classList.add('visible');
         } else {
             toolsContainer.style.display = 'none';
             toolsContainer.classList.remove('visible');
         }
     }
-
     if (toggleBtn) {
         toggleBtn.innerHTML = posToolsVisible ? '✕ Masquer tout' : '🔍 Afficher tout';
         toggleBtn.style.background = posToolsVisible ? '#ef4444' : POS_GRADIENT;
         toggleBtn.style.boxShadow = posToolsVisible ? '0 4px 14px rgba(239, 68, 68, 0.3)' : POS_SHADOW;
     }
-
     var searchInput = document.getElementById('posSearchInput');
-    if (searchInput) {
-        searchInput.style.display = posToolsVisible ? 'flex' : 'none';
-        if (posToolsVisible) {
-            setTimeout(function() { searchInput.focus(); }, 100);
-        }
-    }
-
+    if (searchInput) { searchInput.style.display = posToolsVisible ? 'flex' : 'none'; if (posToolsVisible) setTimeout(function() { searchInput.focus(); }, 100); }
     var micBtn = document.getElementById('posMicBtn');
-    if (micBtn) {
-        micBtn.style.display = posToolsVisible ? 'flex' : 'none';
-    }
-
+    if (micBtn) { micBtn.style.display = posToolsVisible ? 'flex' : 'none'; }
     var tablesBtn = document.getElementById('posTablesBtn');
-    if (tablesBtn) {
-        tablesBtn.style.display = posToolsVisible ? 'inline-flex' : 'none';
-    }
-
+    if (tablesBtn) { tablesBtn.style.display = posToolsVisible ? 'inline-flex' : 'none'; }
     var enligneBtn = document.getElementById('posEnLigneBtn');
-    if (enligneBtn) {
-        enligneBtn.style.display = posToolsVisible ? 'inline-flex' : 'none';
-    }
-
+    if (enligneBtn) { enligneBtn.style.display = posToolsVisible ? 'inline-flex' : 'none'; }
     if (!posToolsVisible) {
         posViewMode = 'categories';
         posSelectedCategoryForView = null;
         posSelectedCategory = 'all';
         posSearchQuery = '';
         posProductOffset = 0;
-        
         var searchInput2 = document.getElementById('posSearchInput');
-        if (searchInput2) {
-            searchInput2.value = '';
-        }
+        if (searchInput2) { searchInput2.value = ''; }
         var clearBtn = document.getElementById('posSearchClearBtn');
         if (clearBtn) clearBtn.style.display = 'none';
-        
-        if (isOnPOSPage()) {
-            filterProductGrid();
-        }
+        if (isOnPOSPage()) { filterProductGrid(); }
     }
 }
 
-// ==================== SCROLL ====================
 function applyDynamicContentScroll() {
 var container = document.getElementById('dynamicContent');
 if (container) {
@@ -668,33 +388,18 @@ async function loadClientCredits(clientId) {
 if (!clientId) return 0;
 if (clientCreditsCache[clientId] !== undefined) return clientCreditsCache[clientId];
 try {
-const snapshot = await db.collection('credits')
-.where('clientId', '==', clientId)
-.where('paid', '==', false)
-.get();
+const snapshot = await db.collection('credits').where('clientId', '==', clientId).where('paid', '==', false).get();
 let total = 0;
-snapshot.forEach(doc => {
-const data = doc.data();
-total += data.remainingAmount || data.total || 0;
-});
+snapshot.forEach(doc => { const data = doc.data(); total += data.remainingAmount || data.total || 0; });
 clientCreditsCache[clientId] = total;
 return total;
-} catch(e) {
-console.warn('Erreur chargement crédits client:', e);
-return 0;
-}
+} catch(e) { console.warn('Erreur chargement crédits client:', e); return 0; }
 }
 
-// ✅ AFFICHAGE CRÉDIT CLIENT - AVEC COULEUR VERTE
 async function updateClientCreditDisplay(clientId) {
 var displayEl = document.getElementById('clientCreditDisplay');
 if (!displayEl) return;
-if (!clientId) {
-displayEl.textContent = '';
-displayEl.style.display = 'none';
-displayEl.onclick = null;
-return;
-}
+if (!clientId) { displayEl.textContent = ''; displayEl.style.display = 'none'; displayEl.onclick = null; return; }
 var total = await loadClientCredits(clientId);
 if (total > 0) {
 displayEl.textContent = '💳 Crédit: ' + total.toFixed(2) + ' MAD (cliquez pour voir)';
@@ -706,24 +411,12 @@ displayEl.style.cursor = 'pointer';
 displayEl.style.textDecoration = 'underline';
 displayEl.style.textDecorationStyle = 'dotted';
 displayEl.onclick = function() {
-var posState = {
-cart: posCart,
-step: posStep,
-client: posCurrentClient,
-table: posCurrentTable,
-paymentMethod: posPaymentMethod,
-discountMAD: posDiscountMAD,
-amountGiven: posAmountGiven,
-timestamp: Date.now()
-};
+var posState = { cart: posCart, step: posStep, client: posCurrentClient, table: posCurrentTable, paymentMethod: posPaymentMethod, discountMAD: posDiscountMAD, amountGiven: posAmountGiven, timestamp: Date.now() };
 localStorage.setItem('posSavedState', JSON.stringify(posState));
-console.log('💾 État POS sauvegardé:', posState);
-
 var clientName = posCurrentClient ? posCurrentClient.name : '';
 var clientId = posCurrentClient ? posCurrentClient.id : '';
 localStorage.setItem('posSelectedCreditClientId', clientId);
 localStorage.setItem('posSelectedCreditClientName', clientName);
-
 navigateTo('credits');
 };
 } else {
@@ -737,7 +430,6 @@ displayEl.style.textDecoration = 'none';
 displayEl.onclick = null;
 }
 }
-
 // ============================================================
 // ✅ loadPosPage
 // ============================================================
@@ -757,7 +449,6 @@ var state = JSON.parse(savedState);
 if (state.timestamp && (Date.now() - state.timestamp) < 300000) {
 shouldRestore = true;
 restoredState = state;
-console.log('🔄 État POS trouvé pour restauration:', state);
 } else {
 localStorage.removeItem('posSavedState');
 }
@@ -779,12 +470,6 @@ posCurrentTable = restoredState.table || '';
 posPaymentMethod = restoredState.paymentMethod || 'espece';
 posDiscountMAD = restoredState.discountMAD || 0;
 posAmountGiven = restoredState.amountGiven || 0;
-
-console.log('✅ État POS restauré avec succès');
-console.log('📦 Panier:', posCart.length, 'articles');
-console.log('👤 Client:', posCurrentClient ? posCurrentClient.name : 'Aucun');
-console.log('💳 Mode paiement:', posPaymentMethod);
-console.log('💰 Montant donné:', posAmountGiven);
 }
 
 posCommandesFilterText=''; posCommandesSortField='createdAt'; posCommandesSortOrder='desc'; posSearchQuery=''; productIndexBuilt=false; posProductOffset=0; posToolsVisible=false;
@@ -816,8 +501,6 @@ posFilteredClients = [...posAllClients];
 }
 
 if (isOnPOSPage()) renderPOS();
-if (typeof window.buildClientIndex === 'function') window.buildClientIndex();
-if (typeof window.buildProductIndex === 'function') window.buildProductIndex();
 } catch(e) { console.error(e); }
 
 setTimeout(async function(){
@@ -832,8 +515,6 @@ posCategoriesList=[]; cs.forEach(d=>{ let cat={id:d.id,nom:d.data().nom,imageBas
 posProductsList=[]; ps.forEach(d=>{ let dd=d.data(); if(dd.disponible!==false){ let prod={id:d.id,nom:dd.nom||'',description:dd.description||'',prixVente:dd.prixVente||0,prixPromo:dd.prixPromo||0,prixAchat:dd.prixAchat||0,stock:dd.stock,categorie:dd.categorie||'',categories:dd.categories||[],imageBase64:dd.imageBase64||'',favori:dd.favori||false}; posProductsList.push(prod); CacheDB.set('products',d.id,prod); } }); productIndexBuilt=false;
 posAllClients=[]; cl.forEach(d=>{ let data=d.data(),cli={id:d.id,nom:data.nom,prenom:data.prenom,telephone:data.telephone,description:data.description||''}; posAllClients.push(cli); CacheDB.set('clients',d.id,cli); }); posFilteredClients=[...posAllClients];
 if(isOnPOSPage()) renderPOS();
-if (typeof window.buildClientIndex === 'function') window.buildClientIndex();
-if (typeof window.buildProductIndex === 'function') window.buildProductIndex();
 }catch(e){ console.error(e); }
 }, 300);
 
@@ -865,17 +546,9 @@ if(isOnPOSPage()) renderPOS();
 if (shouldRestore && posStep === 2) {
 setTimeout(function() {
 var amountInput = document.getElementById('posAmountGiven');
-if (amountInput && posAmountGiven > 0) {
-amountInput.value = posAmountGiven.toFixed(2);
-if (typeof posCalculateChange === 'function') posCalculateChange();
-}
-if (posCurrentClient && posCurrentClient.id) {
-updateClientCreditDisplay(posCurrentClient.id);
-}
-if (posCurrentClient && posCurrentClient.name) {
-var ci = document.getElementById('posClientSearchInput');
-if (ci) ci.value = posCurrentClient.name;
-}
+if (amountInput && posAmountGiven > 0) { amountInput.value = posAmountGiven.toFixed(2); if (typeof posCalculateChange === 'function') posCalculateChange(); }
+if (posCurrentClient && posCurrentClient.id) { updateClientCreditDisplay(posCurrentClient.id); }
+if (posCurrentClient && posCurrentClient.name) { var ci = document.getElementById('posClientSearchInput'); if (ci) ci.value = posCurrentClient.name; }
 if (typeof window.updatePaymentButtons === 'function') window.updatePaymentButtons();
 }, 500);
 }
@@ -884,9 +557,7 @@ if (posStep === 2 && posAmountGiven > 0) {
 setTimeout(function() {
 var input = document.getElementById('posAmountGiven');
 if (input) { input.value = posAmountGiven.toFixed(2); if (typeof posCalculateChange === 'function') posCalculateChange(); }
-if (posCurrentClient && posCurrentClient.id) {
-updateClientCreditDisplay(posCurrentClient.id);
-}
+if (posCurrentClient && posCurrentClient.id) { updateClientCreditDisplay(posCurrentClient.id); }
 if (posCurrentClient && posCurrentClient.name) { var ci = document.getElementById('posClientSearchInput'); if (ci) ci.value = posCurrentClient.name; }
 if (typeof window.updatePaymentButtons === 'function') window.updatePaymentButtons();
 }, 500);
@@ -898,18 +569,10 @@ clearTimeout(window._searchTimeout);
 window._searchTimeout = setTimeout(function(){
 posProductOffset = 0;
 posSearchQuery = query.toLowerCase().trim();
-
-if (posViewMode === 'categories' && posSearchQuery.length > 0) {
-posViewMode = 'products';
-posSelectedCategoryForView = null;
-}
-
+if (posViewMode === 'categories' && posSearchQuery.length > 0) { posViewMode = 'products'; posSelectedCategoryForView = null; }
 if (posSearchQuery.length > 0 && !posSearchCache[posSearchQuery]) {
-    if (typeof fastSearch === 'function') {
-        posSearchCache[posSearchQuery] = fastSearch(posSearchQuery).slice();
-    }
+    if (typeof fastSearch === 'function') { posSearchCache[posSearchQuery] = fastSearch(posSearchQuery).slice(); }
 }
-
 if(isOnPOSPage()) filterProductGrid();
 }, 80);
 }
@@ -920,9 +583,7 @@ if (input) {
 input.value = '';
 posSearchQuery = '';
 posProductOffset = 0;
-if (isOnPOSPage()) {
-filterProductGrid();
-}
+if (isOnPOSPage()) { filterProductGrid(); }
 input.focus();
 var clearBtn = document.getElementById('posSearchClearBtn');
 if (clearBtn) clearBtn.style.display = 'none';
@@ -949,44 +610,31 @@ if (clearBtn) clearBtn.style.display = 'none';
 
 function loadMoreProducts(){ posProductOffset+=posProductBatchSize; filterProductGrid(); }
 
-// ==================== FILTER PRODUCT GRID - DESIGN VERT ====================
+// ==================== FILTER PRODUCT GRID - DESIGN ÉMERAUDE ====================
 function filterProductGrid(){
 if(!isOnPOSPage() || posStep !== 1) return;
-
 var grid = document.getElementById('posProductGrid') || document.querySelector('.pos-products-grid');
 if(!grid) return;
 
-if (posViewMode === 'categories') {
-afficherCategories(grid);
-return;
-}
+if (posViewMode === 'categories') { afficherCategories(grid); return; }
 
 var f;
-if (posSearchCache[posSearchQuery]) {
-    f = posSearchCache[posSearchQuery].slice();
-} else {
-    f = fastSearch(posSearchQuery);
-    posSearchCache[posSearchQuery] = f.slice();
-}
+if (posSearchCache[posSearchQuery]) { f = posSearchCache[posSearchQuery].slice(); }
+else { f = fastSearch(posSearchQuery); posSearchCache[posSearchQuery] = f.slice(); }
 
 if (posSelectedCategoryForView) {
 f = f.filter(function(p) {
-if (p.categories && p.categories.length > 0) {
-return p.categories.includes(posSelectedCategoryForView);
-}
+if (p.categories && p.categories.length > 0) { return p.categories.includes(posSelectedCategoryForView); }
 return p.categorie === posSelectedCategoryForView;
 });
 } else if (posSelectedCategory !== 'all') {
 f = f.filter(function(p) {
-if (p.categories && p.categories.length > 0) {
-return p.categories.includes(posSelectedCategory);
-}
+if (p.categories && p.categories.length > 0) { return p.categories.includes(posSelectedCategory); }
 return p.categorie === posSelectedCategory;
 });
 }
 
 f.sort(function(a,b){ return (a.nom||'').localeCompare(b.nom||''); });
-
 var totalProducts = f.length;
 var displayProducts = f.slice(0, posProductOffset + posProductBatchSize);
 posHasMoreProducts = (posProductOffset + posProductBatchSize) < totalProducts;
@@ -1001,7 +649,6 @@ grid.style.alignContent = 'start';
 
 var html = '';
 
-// ✅ Barre retour catégories - DESIGN VERT
 html += '<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;padding:6px 10px;margin-bottom:6px;background:var(--bg-card);border-radius:12px;border:1px solid var(--border);">';
 html += '<button onclick="retournerCategories()" style="display:flex;align-items:center;gap:6px;background:'+POS_GRADIENT+';color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:0.85rem;font-weight:600;cursor:pointer;box-shadow:'+POS_SHADOW+';transition:all 0.2s;" onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\''+POS_SHADOW_HOVER+'\';" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\''+POS_SHADOW+'\';">';
 html += '<i class="fas fa-arrow-left"></i> Retour aux catégories';
@@ -1082,7 +729,7 @@ grid.innerHTML = html;
 updateClearButtonVisibility();
 }
 
-// ==================== AFFICHER LES CATÉGORIES - DESIGN VERT ====================
+// ==================== AFFICHER LES CATÉGORIES - DESIGN ÉMERAUDE ====================
 function afficherCategories(grid) {
 var isMobile = window.innerWidth < 700;
 var isTablette = window.innerWidth >= 700 && window.innerWidth <= 1024;
@@ -1096,7 +743,6 @@ grid.style.flexWrap = 'wrap';
 grid.style.alignContent = 'start';
 
 var html = '';
-
 html += '<div style="grid-column:1/-1;padding:8px 10px;font-size:0.95rem;font-weight:700;color:'+POS_PRIMARY_DARK+';">';
 html += '📂 Choisissez une catégorie';
 html += '</div>';
@@ -1115,45 +761,16 @@ return (a.nom || '').localeCompare(b.nom || '');
 });
 
 var imgSize, cardMinHeight, cardMaxHeight, folderSize, nameSize, countSize;
+if (isPC) { imgSize = '140px'; cardMinHeight = '160px'; cardMaxHeight = '200px'; folderSize = '65px'; nameSize = '16px'; countSize = '12px'; }
+else if (isTablette) { imgSize = '130px'; cardMinHeight = '150px'; cardMaxHeight = '180px'; folderSize = '60px'; nameSize = '13px'; countSize = '10px'; }
+else { imgSize = '45px'; cardMinHeight = '65px'; cardMaxHeight = '80px'; folderSize = '20px'; nameSize = '8px'; countSize = '7px'; }
 
-if (isPC) {
-imgSize = '140px';
-cardMinHeight = '160px';
-cardMaxHeight = '200px';
-folderSize = '65px';
-nameSize = '16px';
-countSize = '12px';
-} else if (isTablette) {
-imgSize = '130px';
-cardMinHeight = '150px';
-cardMaxHeight = '180px';
-folderSize = '60px';
-nameSize = '13px';
-countSize = '10px';
-} else {
-imgSize = '45px';
-cardMinHeight = '65px';
-cardMaxHeight = '80px';
-folderSize = '20px';
-nameSize = '8px';
-countSize = '7px';
-}
-
-if (window.innerWidth < 400) {
-imgSize = '35px';
-cardMinHeight = '50px';
-cardMaxHeight = '65px';
-folderSize = '16px';
-nameSize = '7px';
-countSize = '6px';
-}
+if (window.innerWidth < 400) { imgSize = '35px'; cardMinHeight = '50px'; cardMaxHeight = '65px'; folderSize = '16px'; nameSize = '7px'; countSize = '6px'; }
 
 for (var i = 0; i < sortedCategories.length; i++) {
 var cat = sortedCategories[i];
 var count = posProductsList.filter(function(p) {
-if (p.categories && p.categories.length > 0) {
-return p.categories.includes(cat.nom);
-}
+if (p.categories && p.categories.length > 0) { return p.categories.includes(cat.nom); }
 return p.categorie === cat.nom;
 }).length;
 
@@ -1161,7 +778,8 @@ var imgContent = '';
 if (cat.imageBase64) {
 imgContent = '<img src="' + escapeHtml(cat.imageBase64) + '" loading="lazy" alt="' + escapeHtml(cat.nom) + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
 } else {
-imgContent = '<i class="fas fa-folder" style="font-size:' + folderSize + ';color:'+POS_PRIMARY+';"></i>';
+// 🎨 ICÔNE FOLDER AVEC GRADIENT LINEAR
+imgContent = '<i class="fas fa-folder" style="font-size:' + folderSize + ';background:'+POS_GRADIENT+';-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;display:inline-block;"></i>';
 }
 
 var cardStyle = 'min-height:' + cardMinHeight + ';max-height:' + cardMaxHeight + ';' +
@@ -1185,7 +803,7 @@ var countStyle = 'font-size:' + countSize + ';color:'+POS_PRIMARY_DARK+';' +
 
 html += '<div class="pos-category-card" data-cat-name="' + escapeHtml(cat.nom) + '" style="' + cardStyle + '" ' +
 'onclick="selectionnerCategorie(\'' + escapeHtml(cat.nom).replace(/'/g, "\\'") + '\')"' +
-'onmouseover="if(!this.classList.contains(\'active\')){this.style.borderColor=\''+POS_PRIMARY+'\';this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 8px 24px rgba(0, 200, 83, 0.15)\';}"' +
+'onmouseover="if(!this.classList.contains(\'active\')){this.style.borderColor=\''+POS_PRIMARY+'\';this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 8px 24px rgba(0, 200, 150, 0.15)\';}"' +
 'onmouseout="if(!this.classList.contains(\'active\')){this.style.borderColor=\'transparent\';this.style.transform=\'translateY(0)\';this.style.boxShadow=\'var(--shadow-sm)\';}">' +
 '<div style="' + imgStyle + '">' + imgContent + '</div>' +
 '<span style="' + nameStyle + '">' + escapeHtml(cat.nom) + '</span>' +
@@ -1193,11 +811,10 @@ html += '<div class="pos-category-card" data-cat-name="' + escapeHtml(cat.nom) +
 '</div>';
 }
 }
-
 grid.innerHTML = html;
 }
 
-// ==================== SÉLECTIONNER UNE CATÉGORIE - DESIGN VERT ====================
+// ==================== SÉLECTIONNER UNE CATÉGORIE ====================
 function selectionnerCategorie(catName) {
 document.querySelectorAll('.pos-category-card').forEach(function(card) {
 card.classList.remove('active');
@@ -1210,14 +827,13 @@ card.style.color = '#000000';
 
 document.querySelectorAll('.pos-category-card').forEach(function(card) {
 var nameSpan = card.querySelector('span:first-of-type');
-var catNameAttr = card.getAttribute('data-cat-name');
 if (nameSpan && nameSpan.textContent.trim() === catName) {
 card.classList.add('active');
 card.style.borderColor = POS_PRIMARY;
 card.style.background = POS_LIGHT_BG;
 card.style.color = '#000000';
 card.style.transform = 'translateY(-3px)';
-card.style.boxShadow = '0 4px 20px rgba(0, 200, 83, 0.25)';
+card.style.boxShadow = '0 4px 20px rgba(0, 200, 150, 0.25)';
 }
 });
 
@@ -1225,17 +841,11 @@ posSelectedCategoryForView = catName;
 posViewMode = 'products';
 posProductOffset = 0;
 posSearchQuery = '';
-
 posSelectedCategory = catName;
 
 var searchInput = document.getElementById('posSearchInput');
-if (searchInput) {
-searchInput.value = '';
-}
-
-if (isOnPOSPage()) {
-filterProductGrid();
-}
+if (searchInput) { searchInput.value = ''; }
+if (isOnPOSPage()) { filterProductGrid(); }
 }
 
 // ==================== RETOURNER AUX CATÉGORIES ====================
@@ -1248,21 +858,14 @@ card.style.boxShadow = 'var(--shadow-sm)';
 card.style.background = '#FFFFFF';
 card.style.color = '#000000';
 });
-
 posViewMode = 'categories';
 posSelectedCategoryForView = null;
 posSelectedCategory = 'all';
 posSearchQuery = '';
 posProductOffset = 0;
-
 var searchInput = document.getElementById('posSearchInput');
-if (searchInput) {
-searchInput.value = '';
-}
-
-if (isOnPOSPage()) {
-filterProductGrid();
-}
+if (searchInput) { searchInput.value = ''; }
+if (isOnPOSPage()) { filterProductGrid(); }
 }
 
 // ⚡ RECHERCHE CLIENT
@@ -1282,12 +885,9 @@ return;
 }
 if (clearBtn) clearBtn.style.display = 'flex';
 
-if (typeof window.clientSearchCache === 'undefined') {
-    window.clientSearchCache = {};
-}
-if (window.clientSearchCache[q]) {
-    posFilteredClients = window.clientSearchCache[q].slice();
-} else {
+if (typeof window.clientSearchCache === 'undefined') { window.clientSearchCache = {}; }
+if (window.clientSearchCache[q]) { posFilteredClients = window.clientSearchCache[q].slice(); }
+else {
     posFilteredClients = posAllClients.filter(function(c){
         return (c.nom||'').toLowerCase().indexOf(q)!==-1 ||
         (c.prenom||'').toLowerCase().indexOf(q)!==-1 ||
@@ -1309,27 +909,19 @@ if (clearBtn) clearBtn.style.display = 'flex';
 updateClientCreditDisplay(client.id);
 updatePaymentButtons();
 if (isOnPOSPage()) renderPOS();
-setTimeout(function() {
-if (posStep === 1 && isOnPOSPage()) {
-posGoToStep2();
-}
-}, 300);
+setTimeout(function() { if (posStep === 1 && isOnPOSPage()) posGoToStep2(); }, 300);
 return;
 }
-if (posFilteredClients.length > 0) {
-renderClientDropdown();
-} else {
-if (dropdown) dropdown.style.display = 'none';
-}
+if (posFilteredClients.length > 0) { renderClientDropdown(); }
+else { if (dropdown) dropdown.style.display = 'none'; }
 }
 
 function renderClientDropdown(){
 var d = document.getElementById('posClientDropdown');
 if (!d) return;
 var h = '';
-if (posFilteredClients.length === 0) {
-h = '<div style="padding:8px;color:#94a3b8;text-align:center;font-size:24px;">Aucun</div>';
-} else {
+if (posFilteredClients.length === 0) { h = '<div style="padding:8px;color:#94a3b8;text-align:center;font-size:24px;">Aucun</div>'; }
+else {
 posFilteredClients.forEach(function(c){
 h += '<div onclick="posSelectClientFromDropdown(\''+c.id+'\',\''+escapeHtml(c.nom)+' '+escapeHtml(c.prenom)+'\')" style="padding:8px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:24px;">'+
 escapeHtml(c.nom)+' '+escapeHtml(c.prenom)+
@@ -1354,11 +946,7 @@ if(clearBtn) clearBtn.style.display='flex';
 updatePaymentButtons();
 updateClientCreditDisplay(cid);
 if(isOnPOSPage()) renderPOS();
-setTimeout(function() {
-if (posStep === 1 && isOnPOSPage()) {
-posGoToStep2();
-}
-}, 300);
+setTimeout(function() { if (posStep === 1 && isOnPOSPage()) posGoToStep2(); }, 300);
 }
 
 document.addEventListener('click',function(e){
@@ -1366,9 +954,7 @@ var d=document.getElementById('posClientDropdown');
 var s=document.getElementById('posClientSearchInput');
 if(d && s && !s.contains(e.target) && !d.contains(e.target)) {
 d.style.display='none';
-if (posCurrentClient && posCurrentClient.name) {
-s.value = posCurrentClient.name;
-}
+if (posCurrentClient && posCurrentClient.name) { s.value = posCurrentClient.name; }
 }
 });
 
@@ -1380,18 +966,11 @@ function posAddToCartOrOpenOptions(pid){
     if(!p) return; 
     if(p.stock!==undefined&&p.stock<=0){ alert('Rupture'); return; } 
     var cat=posCategoriesList.find(function(c){ return c.nom===p.categorie; }),isRecette=cat&&cat.recette===true; 
-    if(isRecette){ 
-        posCurrentProductId=pid; 
-        posOpenOptionsModal(pid); 
-    } else { 
+    if(isRecette){ posCurrentProductId=pid; posOpenOptionsModal(pid); } 
+    else { 
         var ex=posCart.find(function(x){ return x.id===pid; }); 
-        if(ex){ 
-            if(p.stock!==undefined&&ex.quantite>=p.stock){ alert('Stock insuffisant'); return; } 
-            ex.quantite+=1; 
-        } else { 
-            var pr=p.prixPromo&&p.prixPromo>0?p.prixPromo:p.prixVente; 
-            posCart.push({id:p.id,nom:p.nom,prixUnitaire:pr,prixAchat:p.prixAchat||0,prixPromo:p.prixPromo||0,prixVente:p.prixVente||0,quantite:1,categorie:p.categorie||'',imageBase64:p.imageBase64||'',sauces:[],interdits:[],epice:'Normal',sel:'Normal'}); 
-        } 
+        if(ex){ if(p.stock!==undefined&&ex.quantite>=p.stock){ alert('Stock insuffisant'); return; } ex.quantite+=1; } 
+        else { var pr=p.prixPromo&&p.prixPromo>0?p.prixPromo:p.prixVente; posCart.push({id:p.id,nom:p.nom,prixUnitaire:pr,prixAchat:p.prixAchat||0,prixPromo:p.prixPromo||0,prixVente:p.prixVente||0,quantite:1,categorie:p.categorie||'',imageBase64:p.imageBase64||'',sauces:[],interdits:[],epice:'Normal',sel:'Normal'}); } 
         window.posCart = posCart;
         if(typeof window.onProductAdded==='function') window.onProductAdded(p.id); 
         updateCartOnly(); 
@@ -1404,35 +983,20 @@ function posAddToCartOrOpenOptions(pid){
 async function posOpenOptionsModal(pid) {
 var p = posProductsList.find(function(x) { return x.id === pid; });
 if (!p) return;
-if (p.stock !== undefined && p.stock <= 0) {
-alert('Rupture');
-return;
-}
+if (p.stock !== undefined && p.stock <= 0) { alert('Rupture'); return; }
 
 try {
 var doc = await db.collection('products').doc(pid).get();
-if (doc.exists) {
-posCurrentProductIngredients = doc.data().ingredients || [];
-} else {
-posCurrentProductIngredients = [];
-}
-} catch(e) {
-console.error('Erreur chargement ingrédients:', e);
-posCurrentProductIngredients = [];
-}
+if (doc.exists) { posCurrentProductIngredients = doc.data().ingredients || []; }
+else { posCurrentProductIngredients = []; }
+} catch(e) { console.error('Erreur chargement ingrédients:', e); posCurrentProductIngredients = []; }
 
 if (typeof allStockData === 'undefined' || allStockData.length === 0) {
 try {
 const snap = await db.collection('stock').orderBy('nom').get();
 allStockData = [];
-snap.forEach(function(d) {
-var dd = d.data();
-dd.id = d.id;
-allStockData.push(dd);
-});
-} catch(e) {
-console.error('Erreur chargement stock:', e);
-}
+snap.forEach(function(d) { var dd = d.data(); dd.id = d.id; allStockData.push(dd); });
+} catch(e) { console.error('Erreur chargement stock:', e); }
 }
 
 var grouped = {};
@@ -1440,16 +1004,8 @@ posCurrentProductIngredients.forEach(function(ing) {
 var stockItem = allStockData.find(function(s) { return s.id === ing.idStock; });
 var cat = stockItem ? (stockItem.categorie || 'Ingrédients') : 'Ingrédients';
 if (!grouped[cat]) grouped[cat] = [];
-
 var stockDisponible = stockItem ? (stockItem.quantite || 0) : 0;
-
-grouped[cat].push({
-nom: ing.nom,
-idStock: ing.idStock,
-quantite: ing.quantite || 1,
-unite: ing.unite || '',
-stockDisponible: stockDisponible
-});
+grouped[cat].push({ nom: ing.nom, idStock: ing.idStock, quantite: ing.quantite || 1, unite: ing.unite || '', stockDisponible: stockDisponible });
 });
 
 var order = ['Sauces', 'Légumes', 'Fruits', 'Viande', 'Poulet', 'Poisson', 'Ingrédients'];
@@ -1466,30 +1022,23 @@ posCurrentProductId = pid;
 var h = '<h4 style="font-size:1.2rem;margin-bottom:12px;color:'+POS_PRIMARY_DARK+';">' + escapeHtml(p.nom) + '</h4>';
 h += '<p style="color:#64748b;font-size:0.85rem;margin-bottom:12px;">Sélectionnez les ingrédients à conserver (décochez pour exclure) :</p>';
 
-if (sortedCats.length === 0) {
-h += '<div style="color:#94a3b8;padding:12px;">Aucun ingrédient pour ce produit</div>';
-} else {
+if (sortedCats.length === 0) { h += '<div style="color:#94a3b8;padding:12px;">Aucun ingrédient pour ce produit</div>'; }
+else {
 sortedCats.forEach(function(cat) {
 h += '<div style="margin-bottom:14px;">';
 h += '<label style="font-weight:700;font-size:0.9rem;display:block;margin-bottom:4px;color:'+POS_PRIMARY_DARK+';">🥫 ' + escapeHtml(cat) + '</label>';
 h += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
-
 grouped[cat].forEach(function(ing) {
 var disabled = ing.stockDisponible <= 0 ? 'disabled' : '';
 var styleDisabled = ing.stockDisponible <= 0 ? 'opacity:0.5;' : '';
-
 h += '<label style="display:flex;align-items:center;gap:6px;padding:8px 12px;border:2px solid #e2e8f0;border-radius:10px;cursor:' + (ing.stockDisponible <= 0 ? 'not-allowed' : 'pointer') + ';' + styleDisabled + 'transition:all 0.2s;" onmouseover="this.style.borderColor=\''+POS_PRIMARY+'\';" onmouseout="this.style.borderColor=\'#e2e8f0\';">';
 h += '<input type="checkbox" class="pos-interdit-check" value="' + escapeHtml(ing.nom) + '" ' + disabled + ' checked style="accent-color:'+POS_PRIMARY+';">';
 h += ' ' + escapeHtml(ing.nom);
 if (ing.unite) h += ' (' + escapeHtml(ing.unite) + ')';
-if (ing.stockDisponible > 0) {
-h += ' <span style="font-size:0.7rem;color:#94a3b8;">stock: ' + ing.stockDisponible + '</span>';
-} else {
-h += ' <span style="font-size:0.7rem;color:#ef4444;">❌ rupture</span>';
-}
+if (ing.stockDisponible > 0) { h += ' <span style="font-size:0.7rem;color:#94a3b8;">stock: ' + ing.stockDisponible + '</span>'; }
+else { h += ' <span style="font-size:0.7rem;color:#ef4444;">❌ rupture</span>'; }
 h += '</label>';
 });
-
 h += '</div></div>';
 });
 }
@@ -1516,52 +1065,26 @@ openModal('Personnaliser - ' + escapeHtml(p.nom), h);
 
 function posConfirmOptions() {
 var interdits = [];
-document.querySelectorAll('.pos-interdit-check:checked').forEach(function(cb) {
-interdits.push(cb.value);
-});
+document.querySelectorAll('.pos-interdit-check:checked').forEach(function(cb) { interdits.push(cb.value); });
 var epice = (document.querySelector('input[name="pos-epice"]:checked') || {}).value || 'Normal';
 var sel = (document.querySelector('input[name="pos-sel"]:checked') || {}).value || 'Normal';
 var p = posProductsList.find(function(x) { return x.id === posCurrentProductId; });
 if (!p) { closeModal(); return; }
 
 var ingredientsExclus = [];
-document.querySelectorAll('.pos-interdit-check:checked').forEach(function(cb) {
-ingredientsExclus.push(cb.value.toLowerCase().trim());
-});
+document.querySelectorAll('.pos-interdit-check:checked').forEach(function(cb) { ingredientsExclus.push(cb.value.toLowerCase().trim()); });
 
 var ex = posCart.find(function(x) { return x.id === posCurrentProductId; });
 if (ex) {
-if (p.stock !== undefined && ex.quantite >= p.stock) {
-alert('Stock insuffisant');
-closeModal();
-return;
-}
+if (p.stock !== undefined && ex.quantite >= p.stock) { alert('Stock insuffisant'); closeModal(); return; }
 ex.quantite += 1;
 } else {
 var pr = p.prixPromo && p.prixPromo > 0 ? p.prixPromo : p.prixVente;
-posCart.push({
-id: p.id,
-nom: p.nom,
-prixUnitaire: pr,
-prixAchat: p.prixAchat || 0,
-prixPromo: p.prixPromo || 0,
-prixVente: p.prixVente || 0,
-quantite: 1,
-categorie: p.categorie || '',
-imageBase64: p.imageBase64 || '',
-sauces: [],
-interdits: interdits,
-epice: epice,
-sel: sel,
-ingredientsExclus: ingredientsExclus
-});
+posCart.push({id: p.id,nom: p.nom,prixUnitaire: pr,prixAchat: p.prixAchat || 0,prixPromo: p.prixPromo || 0,prixVente: p.prixVente || 0,quantite: 1,categorie: p.categorie || '',imageBase64: p.imageBase64 || '',sauces: [],interdits: interdits,epice: epice,sel: sel,ingredientsExclus: ingredientsExclus});
 }
 
 decrementerIngredientsStock(posCurrentProductId, ingredientsExclus);
-
-if (typeof window.onProductAdded === 'function') {
-window.onProductAdded(p.id);
-}
+if (typeof window.onProductAdded === 'function') { window.onProductAdded(p.id); }
 closeModal();
 updateCartOnly();
 posMultiCarts[posCurrentCartId] = posCart.slice();
@@ -1574,46 +1097,24 @@ db.collection('products').doc(productId).get().then(function(doc) {
 if (!doc.exists) return;
 var productData = doc.data();
 var ingredients = productData.ingredients || [];
-
 ingredients.forEach(function(ing) {
-var isExcluded = ingredientsExclus.some(function(excl) {
-return excl === ing.nom.toLowerCase().trim();
-});
-
+var isExcluded = ingredientsExclus.some(function(excl) { return excl === ing.nom.toLowerCase().trim(); });
 if (!isExcluded && ing.idStock) {
 var quantite = ing.quantite || 1;
-
 db.collection('stock').doc(ing.idStock).get().then(function(stockDoc) {
 if (!stockDoc.exists) return;
 var stockData = stockDoc.data();
 var nouveauStock = Math.max(0, (stockData.quantite || 0) - quantite);
-
-db.collection('stock').doc(ing.idStock).update({
-quantite: nouveauStock,
-updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-}).then(function() {
+db.collection('stock').doc(ing.idStock).update({ quantite: nouveauStock, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).then(function() {
 var stockItem = allStockData.find(function(s) { return s.id === ing.idStock; });
-if (stockItem) {
-stockItem.quantite = nouveauStock;
-CacheDB.set('stock', ing.idStock, stockItem);
-}
-if (typeof renderStockTable === 'function') {
-renderStockTable();
-}
-console.log('✅ Stock mis à jour: ' + ing.nom + ' → ' + nouveauStock);
-}).catch(function(err) {
-console.error('❌ Erreur mise à jour stock:', err);
+if (stockItem) { stockItem.quantite = nouveauStock; CacheDB.set('stock', ing.idStock, stockItem); }
+if (typeof renderStockTable === 'function') { renderStockTable(); }
 });
-}).catch(function(err) {
-console.error('❌ Erreur récupération stock:', err);
 });
 }
 });
-}).catch(function(err) {
-console.error('❌ Erreur récupération produit:', err);
 });
 }
-
 // ==================== updateCartOnly ====================
 function updateCartOnly(){
 if(!isOnPOSPage()) return;
@@ -1657,21 +1158,15 @@ ci.innerHTML=html;
 var badge=document.querySelector('.pos-cart-badge');
 if(badge) badge.textContent=posCart.length;
 var tr=document.querySelector('.pos-cart-total-row span:last-child');
-if(tr){
-var st=posCalculateTotal(),t=st-posDiscountMAD;
-tr.textContent=t.toFixed(2)+' MAD';
-}
+if(tr){ var st=posCalculateTotal(),t=st-posDiscountMAD; tr.textContent=t.toFixed(2)+' MAD'; }
 var vb=document.querySelector('.pos-validate-btn');
-if(vb) {
-vb.disabled=posCart.length===0;
-}
+if(vb) { vb.disabled=posCart.length===0; }
 }
 
 function getNextFactureNum(){ factureCounter=parseInt(localStorage.getItem('factureCounter'))||0; factureCounter++; localStorage.setItem('factureCounter',factureCounter); return 'FACT-'+new Date().getFullYear()+'-'+String(factureCounter).padStart(5,'0'); }
 
 function renderPOS(){
 applyDynamicContentScroll();
-
 if(!isOnPOSPage()) return;
 var now=Date.now(); if(now-posLastRenderTime<100&&posCart.length>0) return; posLastRenderTime=now;
 var c=document.getElementById('dynamicContent'); if(!c) return;
@@ -1688,7 +1183,7 @@ return;
 buildFullPOS(c);
 }
 
-// ==================== buildFullPOS - DESIGN VERT ====================
+// ==================== buildFullPOS - DESIGN ÉMERAUDE ====================
 function buildFullPOS(c){
 if(posProductsList.length===0&&posCategoriesList.length===0){ c.innerHTML='<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:'+POS_PRIMARY+';"></i><p>Chargement...</p></div>'; return; }
 var st=posCalculateTotal(),t=st-posDiscountMAD;
@@ -1711,7 +1206,6 @@ var stepIndicator = '<div class="pos-steps-nav" style="display:flex; justify-con
 '</div>' +
 '</div>';
 
-// ✅ BARRE MULTI-PANIERS - DESIGN VERT
 var multiCartBar = '<div class="pos-multi-carts-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 10px;background:var(--bg-card);border-radius:12px;border:1px solid var(--border);margin-bottom:6px;">';
 
 var cartCount = Object.keys(posMultiCarts).length;
@@ -1725,13 +1219,9 @@ var isActive = (cid === posCurrentCartId);
 var count = (posMultiCarts[cid] || []).length;
 var total = 0;
 var items = posMultiCarts[cid] || [];
-for (var itm = 0; itm < items.length; itm++) {
-total += (items[itm].prixUnitaire || 0) * (items[itm].quantite || 0);
-}
+for (var itm = 0; itm < items.length; itm++) { total += (items[itm].prixUnitaire || 0) * (items[itm].quantite || 0); }
 var clientName = '';
-if (posMultiPaniersData[cid] && posMultiPaniersData[cid].client) {
-clientName = posMultiPaniersData[cid].client.name || '';
-}
+if (posMultiPaniersData[cid] && posMultiPaniersData[cid].client) { clientName = posMultiPaniersData[cid].client.name || ''; }
 var displayName = clientName ? clientName.substring(0, 12) : '';
 
 var bgColor = isActive ? POS_LIGHT_BG : 'var(--bg-page)';
@@ -1741,35 +1231,22 @@ var fontWeight = isActive ? '700' : '500';
 
 multiCartBar += '<div style="display:flex;align-items:center;gap:2px;border:2px solid ' + borderColor + ';border-radius:8px;background:' + bgColor + ';padding:3px 10px;transition:all 0.2s ease;">';
 multiCartBar += '<button onclick="posSwitchToCart(\'' + cid + '\')" style="background:none;border:none;cursor:pointer;font-weight:' + fontWeight + ';font-size:12px;color:' + textColor + ';padding:2px 4px;">' + cid + ' (' + count + ')</button>';
-if (displayName) {
-multiCartBar += '<span style="font-size:9px;color:#94a3b8;max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(displayName) + '</span>';
-}
-if (count > 0) {
-multiCartBar += '<span style="font-size:9px;color:'+POS_PRIMARY_DARK+';font-weight:600;">' + total.toFixed(0) + ' MAD</span>';
-}
-if (cartKeys.length > 1) {
-multiCartBar += '<button onclick="posDeleteCart(\'' + cid + '\')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px;padding:0 4px;font-weight:700;" title="Supprimer ce panier">✕</button>';
-}
+if (displayName) { multiCartBar += '<span style="font-size:9px;color:#94a3b8;max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(displayName) + '</span>'; }
+if (count > 0) { multiCartBar += '<span style="font-size:9px;color:'+POS_PRIMARY_DARK+';font-weight:600;">' + total.toFixed(0) + ' MAD</span>'; }
+if (cartKeys.length > 1) { multiCartBar += '<button onclick="posDeleteCart(\'' + cid + '\')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px;padding:0 4px;font-weight:700;" title="Supprimer ce panier">✕</button>'; }
 multiCartBar += '</div>';
 }
 
 var grandTotal = posGetTotalAllCarts();
 multiCartBar += '<span style="font-size:11px;color:'+POS_PRIMARY_DARK+';font-weight:700;margin-left:auto;">Total: ' + grandTotal.toFixed(2) + ' MAD</span>';
 
-if (cartKeys.length > 1) {
-multiCartBar += '<button onclick="posResetAllCarts()" style="background:linear-gradient(135deg, #EF4444, #DC2626);color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(239, 68, 68, 0.3);" title="Vider tous les paniers">🗑️ Tout</button>';
-}
+if (cartKeys.length > 1) { multiCartBar += '<button onclick="posResetAllCarts()" style="background:linear-gradient(135deg, #EF4444, #DC2626);color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(239, 68, 68, 0.3);" title="Vider tous les paniers">🗑️ Tout</button>'; }
 
 multiCartBar += '</div>';
 
 var productPanelDisplay = (posStep === 2) ? 'display:none;' : '';
-
 var mobileCartStyle = '';
-if (isMobile) {
-mobileCartStyle = 'width:100% !important;max-height:35vh !important;min-height:150px !important;margin-top:4px !important;flex:1 !important;';
-}
-
-var productsPanelMaxHeight = 'none';
+if (isMobile) { mobileCartStyle = 'width:100% !important;max-height:35vh !important;min-height:150px !important;margin-top:4px !important;flex:1 !important;'; }
 
 var gridCols = isMobile ? 'repeat(5, 1fr)' : 'repeat(auto-fill, minmax(110px, 1fr))';
 var gridGap = isMobile ? '4px' : '8px';
@@ -1791,7 +1268,7 @@ multiCartBar +
 '<div id="posToolsContainer" style="display:none;flex-direction:column;gap:4px;margin-bottom:4px;padding:5px 8px;background:var(--bg-page);border-radius:10px;border:1px solid var(--border);">' +
 
 '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-'<div style="flex:1;min-width:120px;display:flex;align-items:center;background:var(--bg-card);border:2px solid var(--border);border-radius:40px;padding:2px 12px;position:relative;height:'+(isMobile?'34px':'38px')+';transition:var(--transition);" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 83, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';">' +
+'<div style="flex:1;min-width:120px;display:flex;align-items:center;background:var(--bg-card);border:2px solid var(--border);border-radius:40px;padding:2px 12px;position:relative;height:'+(isMobile?'34px':'38px')+';transition:var(--transition);" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 150, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';">' +
 '<i class="fas fa-search" style="color:'+POS_PRIMARY+';margin-right:6px;font-size:'+(isMobile?'13px':'15px')+';"></i>' +
 '<input type="text" id="posSearchInput" placeholder="🔍 Rechercher un produit..." value="'+escapeHtml(posSearchQuery)+'" onkeyup="posSearchProducts(this.value); updateClearButtonVisibility();" oninput="updateClearButtonVisibility();" style="border:none;outline:none;padding:0;width:100%;background:transparent;font-size:'+(isMobile?'13px':'15px')+';padding-right:28px;height:'+(isMobile?'34px':'38px')+';color:var(--text-primary);">' +
 '<button id="posSearchClearBtn" onclick="clearPosSearch()" style="display:'+(posSearchQuery ? 'flex' : 'none')+';position:absolute;right:8px;background:none;border:none;cursor:pointer;padding:2px;color:var(--text-muted);font-size:'+(isMobile?'14px':'16px')+';align-items:center;justify-content:center;" title="Effacer"><i class="fas fa-times-circle"></i></button>' +
@@ -1866,21 +1343,21 @@ h+='<div class="pos-cart-header" style="padding:8px 12px;border-bottom:1px solid
 '</button>' +
 '</div>' +
 '<div style="position:relative;">' +
-'<div style="display:flex;align-items:center;background:#fff;border:2px solid var(--border);border-radius:10px;padding:4px 10px;position:relative;transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 83, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';">' +
+'<div style="display:flex;align-items:center;background:#fff;border:2px solid var(--border);border-radius:10px;padding:4px 10px;position:relative;transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 150, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';">' +
 '<input type="text" id="posClientSearchInput" placeholder="🔍 Cliquez et tapez..." onkeyup="posSearchClient(this.value)" onfocus="if(this.value)posSearchClient(this.value)" autocomplete="off" value="'+(posCurrentClient?escapeHtml(posCurrentClient.name):'')+'" style="border:none;outline:none;padding:4px 0;width:100%;background:transparent;font-size:18px !important;font-weight:700 !important;padding-right:24px;">' +
 '<button id="posClientClearBtn" onclick="clearClientSearch()" style="display:'+((posCurrentClient && posCurrentClient.name) ? 'flex' : 'none')+';position:absolute;right:4px;background:none;border:none;cursor:pointer;padding:2px;color:#94a3b8;font-size:1rem;align-items:center;justify-content:center;" title="Effacer le client"><i class="fas fa-times-circle"></i></button>' +
 '</div>' +
-'<div id="posClientDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:2px solid '+POS_PRIMARY+';border-radius:0 0 10px 10px;max-height:150px;overflow-y:auto;z-index:50;box-shadow:0 8px 24px rgba(0, 200, 83, 0.15);"></div>' +
-'</div>'+creditDisplay+'</div><div style="margin:4px 0;font-size:0.7rem;text-align:center;color:var(--text-muted);font-weight:600;">— OU —</div><div style="margin-bottom:6px;"><label style="font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:700;color:'+POS_PRIMARY_DARK+';">Table</label><input type="text" id="posTableNum" value="'+escapeHtml(posCurrentTable)+'" onchange="posSetTable(this.value)" style="width:100%;padding:6px 10px;border:2px solid var(--border);border-radius:8px;font-size:'+(isMobile?'14px':'0.85rem')+';font-weight:600;transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 83, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';"></div><div style="margin-bottom:6px;"><div style="padding:8px 12px;background:'+POS_LIGHT_BG+';border-radius:10px;border:1px solid '+POS_PRIMARY+';">' +
+'<div id="posClientDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:2px solid '+POS_PRIMARY+';border-radius:0 0 10px 10px;max-height:150px;overflow-y:auto;z-index:50;box-shadow:0 8px 24px rgba(0, 200, 150, 0.15);"></div>' +
+'</div>'+creditDisplay+'</div><div style="margin:4px 0;font-size:0.7rem;text-align:center;color:var(--text-muted);font-weight:600;">— OU —</div><div style="margin-bottom:6px;"><label style="font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:700;color:'+POS_PRIMARY_DARK+';">Table</label><input type="text" id="posTableNum" value="'+escapeHtml(posCurrentTable)+'" onchange="posSetTable(this.value)" style="width:100%;padding:6px 10px;border:2px solid var(--border);border-radius:8px;font-size:'+(isMobile?'14px':'0.85rem')+';font-weight:600;transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 150, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';"></div><div style="margin-bottom:6px;"><div style="padding:8px 12px;background:'+POS_LIGHT_BG+';border-radius:10px;border:1px solid '+POS_PRIMARY+';">' +
 '<div style="font-size:'+(isMobile?'16px':'18px')+';font-weight:600;color:var(--text-secondary);">Articles: <strong style="color:'+POS_PRIMARY_DARK+';">'+posCart.length+'</strong></div>' +
 (posDiscountMAD>0?'<div style="color:#ef4444;font-size:'+(isMobile?'14px':'16px')+';font-weight:600;">Remise: -'+posDiscountMAD.toFixed(2)+' MAD</div>':'') +
-'<div style="font-size:'+(isMobile?'20px':'22px')+';font-weight:800;color:'+POS_PRIMARY_DARK+';margin-top:4px;">Total: '+t.toFixed(2)+' MAD</div></div></div><div style="margin-bottom:6px;"><label style="font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:700;color:'+POS_PRIMARY_DARK+';">Vendeur</label><input type="text" id="posVendeur" value="'+(window.currentUserData?escapeHtml(window.currentUserData.userData.prenom+' '+window.currentUserData.userData.nom):'')+'" style="width:100%;padding:6px 10px;border:2px solid var(--border);border-radius:8px;font-size:'+(isMobile?'14px':'0.85rem')+';font-weight:600;transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 83, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';"></div><div style="margin-bottom:8px;"><div style="display:flex;gap:4px;">' +
+'<div style="font-size:'+(isMobile?'20px':'22px')+';font-weight:800;color:'+POS_PRIMARY_DARK+';margin-top:4px;">Total: '+t.toFixed(2)+' MAD</div></div></div><div style="margin-bottom:6px;"><label style="font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:700;color:'+POS_PRIMARY_DARK+';">Vendeur</label><input type="text" id="posVendeur" value="'+(window.currentUserData?escapeHtml(window.currentUserData.userData.prenom+' '+window.currentUserData.userData.nom):'')+'" style="width:100%;padding:6px 10px;border:2px solid var(--border);border-radius:8px;font-size:'+(isMobile?'14px':'0.85rem')+';font-weight:600;transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 150, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';"></div><div style="margin-bottom:8px;"><div style="display:flex;gap:4px;">' +
 '<button class="pos-payment-btn '+(posPaymentMethod==='espece'?'active':'')+'" onclick="posSetPaymentMethod(\'espece\')" style="font-size:'+(isMobile?'14px':'0.9rem')+' !important;font-weight:700 !important;padding:8px 12px;height:auto;min-height:42px;border-radius:10px;flex:1;background:'+(posPaymentMethod==='espece'?POS_GRADIENT:'var(--bg-card)')+';color:'+(posPaymentMethod==='espece'?'#fff':'var(--text-primary)')+';border:2px solid '+(posPaymentMethod==='espece'?'transparent':POS_PRIMARY)+';cursor:pointer;transition:all 0.2s;box-shadow:'+(posPaymentMethod==='espece'?POS_SHADOW:'none')+';"><i class="fas fa-money-bill-wave"></i> Espèces</button>' +
 '<button class="pos-payment-btn '+(posPaymentMethod==='credit'?'active':'')+'" onclick="posSetPaymentMethod(\'credit\')" id="posCreditBtn" '+(canCredit?'':'disabled')+' style="font-size:'+(isMobile?'14px':'0.9rem')+' !important;font-weight:700 !important;padding:8px 12px;height:auto;min-height:42px;border-radius:10px;flex:1;background:'+(posPaymentMethod==='credit'?POS_GRADIENT:'var(--bg-card)')+';color:'+(posPaymentMethod==='credit'?'#fff':'var(--text-primary)')+';border:2px solid '+(posPaymentMethod==='credit'?'transparent':POS_PRIMARY)+';cursor:'+(canCredit?'pointer':'not-allowed')+';opacity:'+(canCredit?'1':'0.4')+';transition:all 0.2s;box-shadow:'+(posPaymentMethod==='credit'?POS_SHADOW:'none')+';"><i class="fas fa-credit-card"></i> Crédit</button>' +
 '<button class="pos-payment-btn '+(posPaymentMethod==='partiel'?'active':'')+'" onclick="posSetPaymentMethod(\'partiel\')" id="posPartielBtn" '+(canCredit?'':'disabled')+' style="font-size:'+(isMobile?'14px':'0.9rem')+' !important;font-weight:700 !important;padding:8px 12px;height:auto;min-height:42px;border-radius:10px;flex:1;background:'+(posPaymentMethod==='partiel'?POS_GRADIENT:'var(--bg-card)')+';color:'+(posPaymentMethod==='partiel'?'#fff':'var(--text-primary)')+';border:2px solid '+(posPaymentMethod==='partiel'?'transparent':POS_PRIMARY)+';cursor:'+(canCredit?'pointer':'not-allowed')+';opacity:'+(canCredit?'1':'0.4')+';transition:all 0.2s;box-shadow:'+(posPaymentMethod==='partiel'?POS_SHADOW:'none')+';"><i class="fas fa-hand-holding-usd"></i> Partiel</button>' +
 '</div></div>';
 if(posPaymentMethod==='espece'||posPaymentMethod==='partiel') {
-h+='<div style="margin-bottom:6px;"><label style="font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:700;color:'+POS_PRIMARY_DARK+';">Montant donné</label><input type="number" id="posAmountGiven" placeholder="0.00" value="'+(posAmountGiven>0?posAmountGiven:'')+'" onkeyup="posCalculateChange()" style="width:100%;padding:10px 12px;border:2px solid var(--border);border-radius:10px;font-size:24px !important;font-weight:700 !important;color:'+POS_PRIMARY_DARK+';transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 83, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';"><div id="posChangeDisplay" style="font-size:22px;font-weight:700;padding:4px 0;margin-right:6px;"></div></div>';
+h+='<div style="margin-bottom:6px;"><label style="font-size:'+(isMobile?'12px':'0.75rem')+';font-weight:700;color:'+POS_PRIMARY_DARK+';">Montant donné</label><input type="number" id="posAmountGiven" placeholder="0.00" value="'+(posAmountGiven>0?posAmountGiven:'')+'" onkeyup="posCalculateChange()" style="width:100%;padding:10px 12px;border:2px solid var(--border);border-radius:10px;font-size:24px !important;font-weight:700 !important;color:'+POS_PRIMARY_DARK+';transition:all 0.2s;" onfocusin="this.style.borderColor=\''+POS_PRIMARY+'\';this.style.boxShadow=\'0 0 0 4px rgba(0, 200, 150, 0.12)\';" onfocusout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';"><div id="posChangeDisplay" style="font-size:22px;font-weight:700;padding:4px 0;margin-right:6px;"></div></div>';
 }
 h+='<button class="pos-finalize-btn" onclick="posFinalizeSale()" style="width:100%;padding:12px;margin-top:6px;background:'+POS_GRADIENT+';color:#fff;border:none;border-radius:10px;font-size:16px !important;font-weight:700 !important;min-height:46px;margin-bottom:16px;box-shadow:'+POS_SHADOW+';transition:all 0.2s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\''+POS_SHADOW_HOVER+'\';" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\''+POS_SHADOW+'\';"><i class="fas fa-check-circle"></i> Finaliser</button>' +
 
@@ -1898,9 +1375,7 @@ posSelectedCategoryForView = null;
 filterProductGrid();
 var toolsContainer = document.getElementById('posToolsContainer');
 var toggleBtn = document.getElementById('posToggleToolsBtn');
-if (toolsContainer) {
-toolsContainer.style.display = posToolsVisible ? 'flex' : 'none';
-}
+if (toolsContainer) { toolsContainer.style.display = posToolsVisible ? 'flex' : 'none'; }
 if (toggleBtn) {
 toggleBtn.innerHTML = posToolsVisible ? '✕ Masquer tout' : '🔍 Afficher tout';
 toggleBtn.style.background = posToolsVisible ? 'linear-gradient(135deg, #EF4444, #DC2626)' : POS_GRADIENT;
@@ -1921,19 +1396,13 @@ if (clearBtn) clearBtn.style.display = 'flex';
 
 function posNaviguerEtape(etape) {
 console.log('🔄 Navigation vers étape', etape);
-if (etape === 1) {
-posGoToStep1();
-} else if (etape === 2) {
-posGoToStep2();
-}
+if (etape === 1) { posGoToStep1(); }
+else if (etape === 2) { posGoToStep2(); }
 }
 
 function posFilterCategory(ca){
-if (ca === 'all') {
-retournerCategories();
-} else {
-selectionnerCategorie(ca);
-}
+if (ca === 'all') { retournerCategories(); }
+else { selectionnerCategorie(ca); }
 }
 function posUpdateDiscountMAD(v){ posDiscountMAD=parseFloat(v)||0; if(posDiscountMAD<0) posDiscountMAD=0; if(isOnPOSPage()) renderPOS(); }
 function posUpdateQty(i,ch){ var it=posCart[i]; if(!it) return; var p=posProductsList.find(function(x){ return x.id===it.id; }),nq=it.quantite+ch; if(nq<=0) posCart.splice(i,1); else{ if(p&&p.stock!==undefined&&nq>p.stock){ alert('Max: '+p.stock); return; } it.quantite=nq; } updateCartOnly(); posMultiCarts[posCurrentCartId] = posCart.slice(); posSauvegarderDonneesPanier(posCurrentCartId); posSaveMultiCarts(); }
@@ -1947,12 +1416,8 @@ posSaveMultiCarts();
 posStep = 2;
 window.posStep = 2;
 setStaticBackButtonVisibility(true);
-if (posCurrentClient && posCurrentClient.id) {
-updateClientCreditDisplay(posCurrentClient.id);
-}
-if (typeof window.resetVoiceQuantityMode === 'function') {
-    window.resetVoiceQuantityMode();
-}
+if (posCurrentClient && posCurrentClient.id) { updateClientCreditDisplay(posCurrentClient.id); }
+if (typeof window.resetVoiceQuantityMode === 'function') { window.resetVoiceQuantityMode(); }
 if (typeof window.setVoiceMode === 'function') {
 if (typeof window.lastAddedProductId !== 'undefined') { window.lastAddedProductId = null; }
 window.setVoiceMode('payment', '🎤 Mode paiement', null);
@@ -1969,16 +1434,10 @@ delete window.posVenteId;
 setStaticBackButtonVisibility(false);
 posCart = posMultiCarts[posCurrentCartId] || [];
 window.posCart = posCart;
-if (typeof window.setVoiceMode === 'function') {
-window.setVoiceMode('search', '🎤 Recherche vocale active', null);
-}
-if (typeof showVoiceResult === 'function') {
-showVoiceResult('↩️ Retour au panier');
-}
+if (typeof window.setVoiceMode === 'function') { window.setVoiceMode('search', '🎤 Recherche vocale active', null); }
+if (typeof showVoiceResult === 'function') { showVoiceResult('↩️ Retour au panier'); }
 var c = document.getElementById('dynamicContent');
-if (c && isOnPOSPage()) {
-buildFullPOS(c);
-}
+if (c && isOnPOSPage()) { buildFullPOS(c); }
 }
 
 function posSetPaymentMethod(m){ if((m==='credit'||m==='partiel')&&(!posCurrentClient||!posCurrentClient.id)){ alert('Client requis'); return; } posPaymentMethod=m; posAmountGiven=0; if(isOnPOSPage()) renderPOS(); }
@@ -1992,31 +1451,18 @@ var t=st-posDiscountMAD;
 posAmountGiven=parseFloat(ai.value)||0;
 var c=posAmountGiven-t;
 if(posAmountGiven>0) {
-if(c>=0) {
-cd.innerHTML='<div style="font-size:24px;font-weight:700;color:'+POS_PRIMARY+';display:flex;align-items:center;justify-content:flex-start;"><span>✅ Rendu</span><span style="margin-left:12px;margin-right:12px;">'+c.toFixed(2)+' MAD</span></div>';
-} else {
-cd.innerHTML='<div style="font-size:24px;font-weight:700;color:#ef4444;display:flex;align-items:center;justify-content:flex-start;"><span>❌ Manquant</span><span style="margin-left:12px;margin-right:12px;">'+Math.abs(c).toFixed(2)+' MAD</span></div>';
-}
-} else {
-cd.innerHTML='';
-}
+if(c>=0) { cd.innerHTML='<div style="font-size:24px;font-weight:700;color:'+POS_PRIMARY+';display:flex;align-items:center;justify-content:flex-start;"><span>✅ Rendu</span><span style="margin-left:12px;margin-right:12px;">'+c.toFixed(2)+' MAD</span></div>'; }
+else { cd.innerHTML='<div style="font-size:24px;font-weight:700;color:#ef4444;display:flex;align-items:center;justify-content:flex-start;"><span>❌ Manquant</span><span style="margin-left:12px;margin-right:12px;">'+Math.abs(c).toFixed(2)+' MAD</span></div>'; }
+} else { cd.innerHTML=''; }
 }
 
 async function updateClientFidelityAsync(clientId, total, profitTotal) {
-try {
-return await forceUpdateClient(clientId, total, profitTotal);
-} catch(e) {
-console.error('❌ Erreur updateClientFidelityAsync:', e);
-return false;
-}
+try { return await forceUpdateClient(clientId, total, profitTotal); }
+catch(e) { console.error('❌ Erreur updateClientFidelityAsync:', e); return false; }
 }
 
 async function posFinalizeSale(){
-if(posCart.length === 0){
-alert('❌ Le panier est vide. Ajoutez des articles avant de finaliser.');
-return;
-}
-
+if(posCart.length === 0){ alert('❌ Le panier est vide. Ajoutez des articles avant de finaliser.'); return; }
 if(isFinalizing) return;
 var st=posCalculateTotal(), t=st-posDiscountMAD;
 if(!posCurrentClient && !posCurrentTable){ posCurrentClient = { id: null, name: 'Passager' }; }
@@ -2056,21 +1502,11 @@ await batch.commit();
 localStorage.removeItem('posSavedState');
 
 if(posCurrentClient && posCurrentClient.id && paid) {
-try {
-const success = await forceUpdateClient(posCurrentClient.id, t, profitTotal);
-if (success) {
-console.log('✅ Client mis à jour avec succès !');
-} else {
-console.warn('⚠️ Échec de la mise à jour client');
-}
-} catch(e) {
-console.warn('⚠️ Erreur mise à jour client:', e);
-}
+try { await forceUpdateClient(posCurrentClient.id, t, profitTotal); }
+catch(e) { console.warn('⚠️ Erreur mise à jour client:', e); }
 }
 
-if (posCurrentClient && posCurrentClient.id) {
-clientCreditsCache[posCurrentClient.id] = undefined;
-}
+if (posCurrentClient && posCurrentClient.id) { clientCreditsCache[posCurrentClient.id] = undefined; }
 var venteId = ventesRef.id;
 if (typeof window.sendWhatsApp === 'function') {
 var originalCloseModal = window.closeModal;
@@ -2094,29 +1530,17 @@ window.closeModal = originalCloseModal;
 closeModal();
 if (typeof window.posStopVoiceSearch === 'function') window.posStopVoiceSearch();
 window.sendWhatsApp(venteId);
-setTimeout(function() {
-posResetCart();
-posStep = 1;
-window.posStep = 1;
-if(isOnPOSPage()) renderPOS();
-if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
-}, 500);
+setTimeout(function() { posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS(); if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500); }, 500);
 }); }
 if (noBtn) { noBtn.addEventListener('click', function() {
 window.closeModal = originalCloseModal;
 closeModal();
-posResetCart();
-posStep = 1;
-window.posStep = 1;
-if(isOnPOSPage()) renderPOS();
+posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS();
 if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
 }); }
 }, 100);
 } else {
-posResetCart();
-posStep = 1;
-window.posStep = 1;
-if(isOnPOSPage()) renderPOS();
+posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS();
 if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
 }
 
@@ -2149,46 +1573,25 @@ localStorage.removeItem('posSavedState');
 posSauvegarderDonneesPanier(posCurrentCartId);
 posSaveMultiCarts();
 
-if (document.getElementById('posClientSearchInput')) {
-document.getElementById('posClientSearchInput').value = '';
-}
-if (document.getElementById('clientCreditDisplay')) {
-document.getElementById('clientCreditDisplay').style.display = 'none';
-}
+if (document.getElementById('posClientSearchInput')) { document.getElementById('posClientSearchInput').value = ''; }
+if (document.getElementById('clientCreditDisplay')) { document.getElementById('clientCreditDisplay').style.display = 'none'; }
 if (isOnPOSPage()) renderPOS();
 }
 
-function posChargerCommandesTables() {
-posCommandesTablesCount = 0;
-}
-
-function posChargerCommandesEnLigneCount() {
-posCommandesEnLigneCount = 0;
-}
-
-function posAfficherCommandesTables() {
-alert('Fonction à implémenter selon votre logique');
-}
-
-function posToggleVoiceSearch() {
-if (typeof window.toggleVoiceSearch === 'function') {
-window.toggleVoiceSearch();
-} else {
-alert('Fonction de recherche vocale non disponible');
-}
-}
+function posChargerCommandesTables() { posCommandesTablesCount = 0; }
+function posChargerCommandesEnLigneCount() { posCommandesEnLigneCount = 0; }
+function posAfficherCommandesTables() { alert('Fonction à implémenter selon votre logique'); }
+function posToggleVoiceSearch() { if (typeof window.toggleVoiceSearch === 'function') { window.toggleVoiceSearch(); } else { alert('Fonction de recherche vocale non disponible'); } }
 
 function updateClearButtonVisibility() {
 var input = document.getElementById('posSearchInput');
 var btn = document.getElementById('posSearchClearBtn');
-if (input && btn) {
-btn.style.display = (input.value && input.value.length > 0) ? 'flex' : 'none';
-}
+if (input && btn) { btn.style.display = (input.value && input.value.length > 0) ? 'flex' : 'none'; }
 }
 
 function goBackToPOS(){ if(window.currentUserData&&(window.currentUserData.userData.role==='caissier'||window.currentUserData.userData.role==='admin')){ if(posCart.length>0&&posStep===1){ if(!confirm('⚠️ '+posCart.length+' article(s) dans le panier. Garder ?')) posResetCart(); } navigateTo('pos'); } }
 
-// ==================== AJOUT RAPIDE CLIENT - DESIGN VERT ====================
+// ==================== AJOUT RAPIDE CLIENT ====================
 function posAjouterNouveauClient() {
     var modalHtml = `
         <div style="padding:10px;">
@@ -2199,26 +1602,26 @@ function posAjouterNouveauClient() {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 <div>
                     <label style="font-weight:700;font-size:0.85rem;display:block;margin-bottom:4px;color:${POS_PRIMARY_DARK};">Prénom *</label>
-                    <input type="text" id="posNewClientPrenom" placeholder="Prénom" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 83, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
+                    <input type="text" id="posNewClientPrenom" placeholder="Prénom" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 150, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
                 </div>
                 <div>
                     <label style="font-weight:700;font-size:0.85rem;display:block;margin-bottom:4px;color:${POS_PRIMARY_DARK};">Nom *</label>
-                    <input type="text" id="posNewClientNom" placeholder="Nom" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 83, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
+                    <input type="text" id="posNewClientNom" placeholder="Nom" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 150, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
                 </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
                 <div>
                     <label style="font-weight:700;font-size:0.85rem;display:block;margin-bottom:4px;color:${POS_PRIMARY_DARK};">Téléphone</label>
-                    <input type="text" id="posNewClientTelephone" placeholder="Téléphone" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 83, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
+                    <input type="text" id="posNewClientTelephone" placeholder="Téléphone" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 150, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
                 </div>
                 <div>
                     <label style="font-weight:700;font-size:0.85rem;display:block;margin-bottom:4px;color:${POS_PRIMARY_DARK};">Email</label>
-                    <input type="email" id="posNewClientEmail" placeholder="Email" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 83, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
+                    <input type="email" id="posNewClientEmail" placeholder="Email" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 150, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
                 </div>
             </div>
             <div style="margin-top:10px;">
                 <label style="font-weight:700;font-size:0.85rem;display:block;margin-bottom:4px;color:${POS_PRIMARY_DARK};">Adresse</label>
-                <input type="text" id="posNewClientAdresse" placeholder="Adresse" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 83, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
+                <input type="text" id="posNewClientAdresse" placeholder="Adresse" style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;transition:all 0.2s;" onfocus="this.style.borderColor='${POS_PRIMARY}';this.style.boxShadow='0 0 0 4px rgba(0, 200, 150, 0.12)';" onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none';">
             </div>
             <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:18px;">
                 <button class="btn-cancel" onclick="closeModal()" style="padding:12px 24px;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-size:1rem;background:#e2e8f0;">Annuler</button>
@@ -2244,9 +1647,7 @@ function posAjouterNouveauClient() {
         var input = document.getElementById(id);
         if (input) {
             input.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    posConfirmerAjoutClient();
-                }
+                if (e.key === 'Enter') { posConfirmerAjoutClient(); }
             });
         }
     });
@@ -2291,61 +1692,21 @@ async function posConfirmerAjoutClient() {
         }
         
         var newClientData = {
-            nom: nomVal,
-            prenom: prenomVal,
-            telephone: telephoneVal || '',
-            email: emailVal || '',
-            adresse: adresseVal || '',
-            username: '',
-            genre: '',
-            whatsapp: '',
-            facebook: '',
-            instagram: '',
-            ca: 0,
-            profit: 0,
-            pointsFidelite: 0,
-            allergies: [],
-            aime: [],
-            deteste: [],
-            description: '',
+            nom: nomVal, prenom: prenomVal, telephone: telephoneVal || '', email: emailVal || '', adresse: adresseVal || '',
+            username: '', genre: '', whatsapp: '', facebook: '', instagram: '',
+            ca: 0, profit: 0, pointsFidelite: 0, allergies: [], aime: [], deteste: [], description: '',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         
         var docRef = await db.collection('clients').add(newClientData);
-        var newClient = {
-            id: docRef.id,
-            nom: nomVal,
-            prenom: prenomVal,
-            telephone: telephoneVal || '',
-            email: emailVal || '',
-            adresse: adresseVal || '',
-            username: '',
-            genre: '',
-            whatsapp: '',
-            facebook: '',
-            instagram: '',
-            ca: 0,
-            profit: 0,
-            pointsFidelite: 0,
-            allergies: [],
-            aime: [],
-            deteste: [],
-            description: ''
-        };
+        var newClient = { id: docRef.id, nom: nomVal, prenom: prenomVal, telephone: telephoneVal || '', email: emailVal || '', adresse: adresseVal || '', username: '', genre: '', whatsapp: '', facebook: '', instagram: '', ca: 0, profit: 0, pointsFidelite: 0, allergies: [], aime: [], deteste: [], description: '' };
         
         posAllClients.push(newClient);
         posFilteredClients.push(newClient);
         if (window.allClientsData) window.allClientsData.push(newClient);
         
-        if (typeof CacheDB !== 'undefined' && CacheDB.set) {
-            CacheDB.set('clients', docRef.id, newClient);
-        }
-        
-        if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
-            setTimeout(function() {
-                CacheDB.saveCollection('clients');
-            }, 500);
-        }
+        if (typeof CacheDB !== 'undefined' && CacheDB.set) { CacheDB.set('clients', docRef.id, newClient); }
+        if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) { setTimeout(function() { CacheDB.saveCollection('clients'); }, 500); }
         
         posCurrentClient = { id: docRef.id, name: nomVal + ' ' + prenomVal };
         var input = document.getElementById('posClientSearchInput');
@@ -2356,9 +1717,6 @@ async function posConfirmerAjoutClient() {
         
         closeModal();
         if (isOnPOSPage()) renderPOS();
-        
-        console.log('✅ Nouveau client ajouté:', prenomVal, nomVal);
-        
     } catch(e) {
         console.error('❌ Erreur ajout client:', e);
         alert('❌ Erreur lors de l\'ajout du client: ' + e.message);
@@ -2371,37 +1729,21 @@ if (window.innerWidth <= 700) {
 var row = document.querySelector('.pos-row');
 var produits = document.querySelector('.pos-products-panel');
 var panier = document.querySelector('.pos-cart-panel');
-
 if (row && produits && panier) {
 row.style.display = 'flex';
 row.style.flexDirection = 'column';
 row.style.flexWrap = 'nowrap';
-
-produits.style.width = '100%';
-produits.style.maxWidth = '100%';
-produits.style.minWidth = '100%';
-produits.style.height = 'auto';
-produits.style.minHeight = '300px';
-produits.style.maxHeight = '60vh';
-produits.style.flex = '1';
-
-panier.style.width = '100%';
-panier.style.maxWidth = '100%';
-panier.style.minWidth = '100%';
-panier.style.height = 'auto';
-panier.style.minHeight = '150px';
-panier.style.maxHeight = '35vh';
-panier.style.marginTop = '4px';
-panier.style.position = 'static';
+produits.style.width = '100%'; produits.style.maxWidth = '100%'; produits.style.minWidth = '100%';
+produits.style.height = 'auto'; produits.style.minHeight = '300px'; produits.style.maxHeight = '60vh'; produits.style.flex = '1';
+panier.style.width = '100%'; panier.style.maxWidth = '100%'; panier.style.minWidth = '100%';
+panier.style.height = 'auto'; panier.style.minHeight = '150px'; panier.style.maxHeight = '35vh';
+panier.style.marginTop = '4px'; panier.style.position = 'static';
 }
 }
 }
 
 var ancienBuildFullPOS = window.buildFullPOS;
-window.buildFullPOS = function(c) {
-ancienBuildFullPOS(c);
-setTimeout(corrigerDispositionMobile, 100);
-};
+window.buildFullPOS = function(c) { ancienBuildFullPOS(c); setTimeout(corrigerDispositionMobile, 100); };
 
 window.addEventListener('load', corrigerDispositionMobile);
 window.addEventListener('resize', corrigerDispositionMobile);
@@ -2439,18 +1781,13 @@ window.posChargerToutesDonneesPaniers = posChargerToutesDonneesPaniers;
 window.posAjouterNouveauClient = posAjouterNouveauClient;
 window.posConfirmerAjoutClient = posConfirmerAjoutClient;
 
-console.log('🚀 E-SOLUTION - POS chargé avec corrections');
-console.log('🎨 Design vert vif #00C853 appliqué');
+console.log('🚀 E-SOLUTION - POS chargé');
+console.log('🎨 Design émeraude #00C896 appliqué');
 console.log('✅ forceUpdateClient disponible');
 console.log('✅ Bouton "Afficher tout" corrigé');
 console.log('✅ Correction mobile panier en bas');
-console.log('✅ Crédit client cliquable - REDIRECTION VERS PAGE CRÉDITS AVEC SAUVEGARDE D\'ÉTAT');
-console.log('✅ Catégories actives : texte noir sur fond blanc + bordure verte');
-console.log('✅ Multi-paniers activé - ' + Object.keys(posMultiCarts).length + ' panier(s) disponible(s)');
-console.log('✅ Chaque panier sauvegarde son propre client, table, paiement, remise, montant donné');
-console.log('✅ Ajout rapide de client avec bouton "Nouveau" dans la section paiement');
+console.log('✅ Crédit client cliquable');
+console.log('✅ Icônes folder avec gradient émeraude');
+console.log('✅ Multi-paniers activé - ' + Object.keys(posMultiCarts).length + ' panier(s)');
 console.log('✅ LIMITE À ' + MAX_PANIERS + ' PANIERS MAXIMUM');
-console.log('✅ NAVIGATION FLUIDE ENTRE PANIERS AVEC RE-RENDU COMPLET');
-console.log('✅ SUPPRESSION IMMÉDIATE DES PANIERS AVEC RE-RENDU COMPLET');
-console.log('✅ RÉORGANISATION DES NUMÉROS DE PANIERS (1 À ' + MAX_PANIERS + ')');
-console.log('⚡ OPTIMISATIONS : cache recherche + content-visibility + batch 30 + debounce 80ms');
+console.log('⚡ OPTIMISATIONS : cache + content-visibility + batch 30 + debounce 80ms');
