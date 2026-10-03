@@ -19,6 +19,7 @@
 // ✅ RÉORGANISATION DES NUMÉROS DE PANIERS (1 À 5)
 // ✅ BARRE CATÉGORIES SLIDE SUPPRIMÉE DÉFINITIVEMENT
 // ✅ BOUTONS TABLES/EN LIGNE MASQUÉS POUR LE CLIENT
+// ✅ MODE HORS-LIGNE : Ventes enregistrées localement et synchronisées automatiquement
 // ⚡ OPTIMISATIONS : cache recherche + content-visibility + batch 30 + debounce 80ms
 
 var posCart = [];
@@ -85,6 +86,308 @@ var posMultiPaniersData = {};
 
 // ✅ LIMITE MAXIMALE DE PANIERS
 var MAX_PANIERS = 5;
+
+// ==================== SYSTÈME DE SYNCHRONISATION HORS-LIGNE ====================
+var POS_PENDING_KEY = 'posPendingSales';
+var POS_SYNC_INTERVAL = 15000; // 15 secondes
+var posIsSyncing = false;
+
+// ✅ Récupérer la file d'attente
+function posGetPendingSales() {
+    try {
+        return JSON.parse(localStorage.getItem(POS_PENDING_KEY) || '[]');
+    } catch(e) {
+        return [];
+    }
+}
+
+// ✅ Sauvegarder la file d'attente
+function posSavePendingSales(list) {
+    try {
+        localStorage.setItem(POS_PENDING_KEY, JSON.stringify(list));
+    } catch(e) {
+        console.error('Erreur sauvegarde pending:', e);
+    }
+}
+
+// ✅ Ajouter une vente à la file d'attente
+function posAddPendingSale(sale) {
+    var list = posGetPendingSales();
+    sale._localId = sale._localId || ('local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+    sale._queuedAt = Date.now();
+    list.push(sale);
+    posSavePendingSales(list);
+    posUpdatePendingBadge();
+    console.log('📥 Vente en file d\'attente:', sale.saleData.factureNum, '| Total:', list.length);
+    return sale._localId;
+}
+
+// ✅ Nettoyer les données avant envoi Firestore
+function posCleanSaleData(saleData) {
+    var clean = Object.assign({}, saleData);
+    delete clean._localId;
+    delete clean._localVenteId;
+    delete clean._localCreditId;
+    delete clean._offline;
+    delete clean._synced;
+    delete clean._queuedAt;
+    delete clean._createdAt;
+    delete clean._linkedVenteId;
+    if (!clean.createdAt) {
+        clean.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    }
+    return clean;
+}
+
+// ✅ Envoyer une vente à Firestore
+async function posPushSaleToFirestore(saleData, localVenteId, localCreditId) {
+    var batch = db.batch();
+    var ventesRef = db.collection('ventes').doc();
+    var cleanData = posCleanSaleData(saleData);
+
+    batch.set(ventesRef, cleanData);
+
+    var creditsRef = null;
+    if (!saleData.paid) {
+        creditsRef = db.collection('credits').doc();
+        batch.set(creditsRef, cleanData);
+    }
+
+    // Mettre à jour les stocks
+    if (saleData.items && saleData.items.length > 0) {
+        for (var i = 0; i < saleData.items.length; i++) {
+            var it = saleData.items[i];
+            if (it.id && !it.id.startsWith('local_')) {
+                try {
+                    batch.update(db.collection('products').doc(it.id), {
+                        stock: firebase.firestore.FieldValue.increment(-it.quantite),
+                        vendues: firebase.firestore.FieldValue.increment(it.quantite),
+                        ca: firebase.firestore.FieldValue.increment(it.prixVente * it.quantite)
+                    });
+                } catch(e) { /* produit supprimé */ }
+            }
+        }
+    }
+
+    await batch.commit();
+
+    // Remplacer l'entrée locale par l'entrée Firestore dans le cache
+    if (typeof CacheDB !== 'undefined' && CacheDB.delete) {
+        try {
+            await CacheDB.delete('ventes', localVenteId);
+            if (localCreditId) await CacheDB.delete('credits', localCreditId);
+        } catch(e) { /* ignore */ }
+    }
+
+    var firestoreVente = Object.assign({}, cleanData, { id: ventesRef.id, _synced: true });
+    if (typeof CacheDB !== 'undefined' && CacheDB.set) {
+        await CacheDB.set('ventes', ventesRef.id, firestoreVente);
+        if (creditsRef) {
+            await CacheDB.set('credits', creditsRef.id, Object.assign({}, cleanData, { id: creditsRef.id, _synced: true }));
+        }
+    }
+
+    return { success: true, venteId: ventesRef.id };
+}
+
+// ✅ ENREGISTRER UNE VENTE (point d'entrée principal - gère online/offline)
+async function posEnregistrerVente(saleData) {
+    // Toujours enregistrer en local d'abord (visible dans les listes)
+    var localVenteId = 'vente_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    var localCreditId = !saleData.paid ? ('credit_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6)) : null;
+
+    // Sauvegarder dans CacheDB immédiatement
+    var localVente = Object.assign({}, saleData, {
+        id: localVenteId,
+        _offline: true,
+        _synced: false,
+        _createdAt: Date.now(),
+        createdAt: { seconds: Math.floor(Date.now() / 1000) }
+    });
+
+    if (typeof CacheDB !== 'undefined' && CacheDB.set) {
+        await CacheDB.set('ventes', localVenteId, localVente);
+        if (!saleData.paid) {
+            var localCredit = Object.assign({}, saleData, {
+                id: localCreditId,
+                _offline: true,
+                _synced: false,
+                _linkedVenteId: localVenteId,
+                _createdAt: Date.now(),
+                createdAt: { seconds: Math.floor(Date.now() / 1000) }
+            });
+            await CacheDB.set('credits', localCreditId, localCredit);
+        }
+    }
+
+    // Si en ligne → tenter l'envoi direct
+    if (navigator.onLine) {
+        try {
+            var result = await posPushSaleToFirestore(saleData, localVenteId, localCreditId);
+            if (result.success) {
+                console.log('✅ Vente envoyée directement à Firestore:', saleData.factureNum);
+                return { success: true, online: true, venteId: result.venteId, queued: false };
+            }
+        } catch(e) {
+            console.warn('⚠️ Échec envoi direct, mise en file:', e.message);
+        }
+    }
+
+    // Hors ligne ou échec → mettre en file d'attente
+    posAddPendingSale({
+        saleData: saleData,
+        localVenteId: localVenteId,
+        localCreditId: localCreditId
+    });
+
+    console.log('📴 Vente enregistrée hors-ligne:', saleData.factureNum);
+    return { success: true, online: false, venteId: localVenteId, queued: true };
+}
+
+// ✅ SYNCHRONISER LES VENTES EN ATTENTE
+async function posSyncPendingSales() {
+    if (posIsSyncing) return;
+    if (!navigator.onLine) return;
+
+    var pending = posGetPendingSales();
+    if (pending.length === 0) return;
+
+    posIsSyncing = true;
+    console.log('🔄 Synchronisation de', pending.length, 'vente(s)...');
+
+    var successCount = 0;
+    var failCount = 0;
+    var remaining = [];
+
+    for (var idx = 0; idx < pending.length; idx++) {
+        var item = pending[idx];
+        try {
+            var result = await posPushSaleToFirestore(item.saleData, item.localVenteId, item.localCreditId);
+            if (result.success) {
+                successCount++;
+
+                // Mettre à jour le client CA/Profit si payé
+                if (item.saleData.paid && item.saleData.clientId && typeof forceUpdateClient === 'function') {
+                    try {
+                        await forceUpdateClient(
+                            item.saleData.clientId,
+                            item.saleData.total,
+                            item.saleData.profitTotal || 0
+                        );
+                    } catch(e) {
+                        console.warn('⚠️ Erreur MAJ client:', e);
+                    }
+                }
+
+                console.log('✅ Synchronisé:', item.saleData.factureNum);
+            } else {
+                remaining.push(item);
+                failCount++;
+            }
+        } catch(e) {
+            console.error('❌ Échec sync:', item.saleData.factureNum, e.message);
+            remaining.push(item);
+            failCount++;
+        }
+    }
+
+    posSavePendingSales(remaining);
+    posIsSyncing = false;
+
+    if (successCount > 0) {
+        console.log('✅ Sync terminée:', successCount, 'réussies,', failCount, 'restantes');
+        if (typeof loadVentes === 'function') loadVentes();
+        if (typeof loadCredits === 'function') loadCredits();
+        if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
+            CacheDB.saveCollection('ventes');
+            CacheDB.saveCollection('credits');
+        }
+        posShowToast('✅ ' + successCount + ' vente(s) synchronisée(s)');
+    }
+}
+
+// ✅ BADGE VISUEL DES VENTES EN ATTENTE
+function posUpdatePendingBadge() {
+    var count = posGetPendingSales().length;
+    var badge = document.getElementById('posPendingBadge');
+
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.id = 'posPendingBadge';
+        badge.style.cssText = 'position:fixed;top:70px;right:15px;background:#f59e0b;color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,0.2);display:none;align-items:center;gap:8px;cursor:pointer;';
+        badge.onclick = function() {
+            if (confirm('Synchroniser maintenant les ventes en attente ?')) {
+                posSyncPendingSales();
+            }
+        };
+        document.body.appendChild(badge);
+    }
+
+    if (count > 0) {
+        if (!navigator.onLine) {
+            badge.innerHTML = '📴 Hors ligne - ' + count + ' en attente';
+            badge.style.background = '#ef4444';
+        } else {
+            badge.innerHTML = '⏳ ' + count + ' vente(s) en attente';
+            badge.style.background = '#f59e0b';
+        }
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// ✅ TOAST DE NOTIFICATION
+function posShowToast(msg) {
+    var toast = document.getElementById('posSyncToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'posSyncToast';
+        toast.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#14B8A6;color:#fff;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,0.2);opacity:0;transition:opacity 0.3s;pointer-events:none;';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    setTimeout(function() { toast.style.opacity = '0'; }, 3000);
+}
+
+// ✅ STATUT DE CONNEXION
+function posUpdateOnlineStatus() {
+    if (navigator.onLine) {
+        console.log('🌐 En ligne - Synchronisation automatique');
+        setTimeout(posSyncPendingSales, 1500);
+    } else {
+        console.log('📴 Hors ligne - Mode local activé');
+    }
+    posUpdatePendingBadge();
+}
+
+// ✅ INITIALISATION DU SYSTÈME DE SYNC
+function posInitSync() {
+    window.addEventListener('online', posUpdateOnlineStatus);
+    window.addEventListener('offline', posUpdateOnlineStatus);
+
+    // Sync périodique
+    setInterval(function() {
+        if (navigator.onLine && posGetPendingSales().length > 0) {
+            posSyncPendingSales();
+        }
+    }, POS_SYNC_INTERVAL);
+
+    // Sync au focus
+    window.addEventListener('focus', function() {
+        if (navigator.onLine && posGetPendingSales().length > 0) {
+            posSyncPendingSales();
+        }
+    });
+
+    setTimeout(posUpdateOnlineStatus, 2000);
+    posUpdatePendingBadge();
+    console.log('📡 Système de synchronisation initialisé');
+}
+
+// Lancer l'init
+posInitSync();
 
 // ======================================================
 // ✅ FONCTION DE FORCE POUR METTRE À JOUR LE CLIENT
@@ -2020,6 +2323,7 @@ return false;
 }
 }
 
+// ==================== posFinalizeSale - VERSION AVEC MODE HORS-LIGNE ====================
 async function posFinalizeSale(){
 if(posCart.length === 0){
 alert('❌ Le panier est vide. Ajoutez des articles avant de finaliser.');
@@ -2053,25 +2357,52 @@ var pa=it.prixAchat||0, pvn=it.prixVente||0, pp=it.prixPromo||0, pvr=pp>0?pp:pvn
 profitTotal+=prof;
 return {id:it.id, nom:it.nom, quantite:it.quantite, prixVente:pvr, prixAchat:pa, prixPromo:pp, profit:prof, sauces:[], interdits:it.interdits||[], epice:it.epice||'Normal', sel:it.sel||'Normal'};
 });
-var sd={factureNum:fn, items:itemsDetail, subtotal:st, discountMAD:posDiscountMAD, total:t, clientId:posCurrentClient ? posCurrentClient.id : null, clientName:posCurrentClient ? posCurrentClient.name : 'Passager', table:posCurrentTable || null, vendeur:vendeur, paymentMethod:posPaymentMethod, statutPaiement:statutPaiement, amountGiven:posAmountGiven, change:change, paid:paid, remainingAmount:remaining, profitTotal:profitTotal, createdAt:firebase.firestore.FieldValue.serverTimestamp()};
-var batch=db.batch(), ventesRef=db.collection('ventes').doc();
-batch.set(ventesRef,sd);
-if(!paid){ var creditsRef=db.collection('credits').doc(); batch.set(creditsRef,sd); }
-if(window.posCommandeId){ batch.update(db.collection('commandes').doc(window.posCommandeId), {statut:'payé', paidAt:firebase.firestore.FieldValue.serverTimestamp(), factureNum:fn}); delete window.posCommandeId; }
-if(window.posVenteId){ batch.update(db.collection('ventes').doc(window.posVenteId), {paid:true, statutPaiement:'payé', remainingAmount:0, paidAt:firebase.firestore.FieldValue.serverTimestamp()}); delete window.posVenteId; }
-for(var i=0;i<posCart.length;i++){ var it=posCart[i]; batch.update(db.collection('products').doc(it.id), {stock:firebase.firestore.FieldValue.increment(-it.quantite), vendues:firebase.firestore.FieldValue.increment(it.quantite), ca:firebase.firestore.FieldValue.increment(it.prixUnitaire*it.quantite)}); }
-await batch.commit();
 
-localStorage.removeItem('posSavedState');
+// ✅ Construire les données SANS createdAt (posCleanSaleData s'en occupe)
+var sd = {
+factureNum: fn,
+items: itemsDetail,
+subtotal: st,
+discountMAD: posDiscountMAD,
+total: t,
+clientId: posCurrentClient ? posCurrentClient.id : null,
+clientName: posCurrentClient ? posCurrentClient.name : 'Passager',
+table: posCurrentTable || null,
+vendeur: vendeur,
+paymentMethod: posPaymentMethod,
+statutPaiement: statutPaiement,
+amountGiven: posAmountGiven,
+change: change,
+paid: paid,
+remainingAmount: remaining,
+profitTotal: profitTotal
+};
 
-if(posCurrentClient && posCurrentClient.id && paid) {
+// ✅ Utiliser posEnregistrerVente (gère online/offline automatiquement)
+var result = await posEnregistrerVente(sd);
+var venteId = result.venteId;
+
+// ✅ Mettre à jour les stocks localement (CacheDB)
+for(var i=0;i<posCart.length;i++){
+var it = posCart[i];
+if (typeof CacheDB !== 'undefined' && CacheDB.get) {
 try {
-const success = await forceUpdateClient(posCurrentClient.id, t, profitTotal);
-if (success) {
-console.log('✅ Client mis à jour avec succès !');
-} else {
-console.warn('⚠️ Échec de la mise à jour client');
+var prod = await CacheDB.get('products', it.id);
+if (prod) {
+prod.stock = Math.max(0, (prod.stock || 0) - it.quantite);
+prod.vendues = (prod.vendues || 0) + it.quantite;
+prod.ca = (prod.ca || 0) + (it.prixUnitaire * it.quantite);
+await CacheDB.set('products', it.id, prod);
 }
+} catch(e) { /* ignore */ }
+}
+}
+
+// ✅ Mettre à jour le client si payé ET en ligne (sinon sera fait à la sync)
+if(posCurrentClient && posCurrentClient.id && paid && result.online) {
+try {
+await forceUpdateClient(posCurrentClient.id, t, profitTotal);
+console.log('✅ Client mis à jour avec succès !');
 } catch(e) {
 console.warn('⚠️ Erreur mise à jour client:', e);
 }
@@ -2080,8 +2411,44 @@ console.warn('⚠️ Erreur mise à jour client:', e);
 if (posCurrentClient && posCurrentClient.id) {
 clientCreditsCache[posCurrentClient.id] = undefined;
 }
-var venteId = ventesRef.id;
-if (typeof window.sendWhatsApp === 'function') {
+
+// ✅ Gérer commande/vente existantes (seulement si en ligne)
+if(result.online) {
+if(window.posCommandeId){
+try {
+await db.collection('commandes').doc(window.posCommandeId).update({
+statut:'payé',
+paidAt:firebase.firestore.FieldValue.serverTimestamp(),
+factureNum:fn
+});
+} catch(e) { /* ignore */ }
+delete window.posCommandeId;
+}
+if(window.posVenteId){
+try {
+await db.collection('ventes').doc(window.posVenteId).update({
+paid:true, statutPaiement:'payé', remainingAmount:0,
+paidAt:firebase.firestore.FieldValue.serverTimestamp()
+});
+} catch(e) { /* ignore */ }
+delete window.posVenteId;
+}
+} else {
+delete window.posCommandeId;
+delete window.posVenteId;
+}
+
+localStorage.removeItem('posSavedState');
+
+// ✅ Message selon le mode
+if (result.queued) {
+posShowToast('📴 Vente enregistrée hors-ligne');
+} else {
+posShowToast('✅ Vente enregistrée');
+}
+
+// ✅ WhatsApp (uniquement si en ligne)
+if (typeof window.sendWhatsApp === 'function' && result.online) {
 var originalCloseModal = window.closeModal;
 window.closeModal = function() {
 posResetCart();
@@ -2449,6 +2816,12 @@ window.posChargerToutesDonneesPaniers = posChargerToutesDonneesPaniers;
 // Ajout rapide client
 window.posAjouterNouveauClient = posAjouterNouveauClient;
 window.posConfirmerAjoutClient = posConfirmerAjoutClient;
+// ✅ Synchronisation hors-ligne
+window.posEnregistrerVente = posEnregistrerVente;
+window.posSyncPendingSales = posSyncPendingSales;
+window.posGetPendingSales = posGetPendingSales;
+window.posUpdatePendingBadge = posUpdatePendingBadge;
+window.posShowToast = posShowToast;
 
 console.log('🚀 E-SOLUTION - POS chargé avec corrections');
 console.log('✅ forceUpdateClient disponible');
@@ -2463,4 +2836,5 @@ console.log('✅ LIMITE À ' + MAX_PANIERS + ' PANIERS MAXIMUM');
 console.log('✅ NAVIGATION FLUIDE ENTRE PANIERS AVEC RE-RENDU COMPLET');
 console.log('✅ SUPPRESSION IMMÉDIATE DES PANIERS AVEC RE-RENDU COMPLET');
 console.log('✅ RÉORGANISATION DES NUMÉROS DE PANIERS (1 À ' + MAX_PANIERS + ')');
+console.log('✅ MODE HORS-LIGNE : Ventes synchronisées automatiquement au retour de la connexion');
 console.log('⚡ OPTIMISATIONS : cache recherche + content-visibility + batch 30 + debounce 80ms');
