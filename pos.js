@@ -19,7 +19,7 @@
 // ✅ RÉORGANISATION DES NUMÉROS DE PANIERS (1 À 5)
 // ✅ BARRE CATÉGORIES SLIDE SUPPRIMÉE DÉFINITIVEMENT
 // ✅ BOUTONS TABLES/EN LIGNE MASQUÉS POUR LE CLIENT
-// ✅ MODE HORS-LIGNE : Ventes enregistrées localement et synchronisées automatiquement
+// ✅ MODE HORS-LIGNE PERSISTANT : Vente visible en permanence + sync automatique
 // ⚡ OPTIMISATIONS : cache recherche + content-visibility + batch 30 + debounce 80ms
 
 var posCart = [];
@@ -133,13 +133,15 @@ function posCleanSaleData(saleData) {
     delete clean._queuedAt;
     delete clean._createdAt;
     delete clean._linkedVenteId;
+    delete clean._firestoreId;
+    delete clean._syncedAt;
     if (!clean.createdAt) {
         clean.createdAt = firebase.firestore.FieldValue.serverTimestamp();
     }
     return clean;
 }
 
-// ✅ Envoyer une vente à Firestore
+// ✅ Envoyer une vente à Firestore - GARDE l'entrée locale pour qu'elle reste visible
 async function posPushSaleToFirestore(saleData, localVenteId, localCreditId) {
     var batch = db.batch();
     var ventesRef = db.collection('ventes').doc();
@@ -171,23 +173,68 @@ async function posPushSaleToFirestore(saleData, localVenteId, localCreditId) {
 
     await batch.commit();
 
-    // Remplacer l'entrée locale par l'entrée Firestore dans le cache
-    if (typeof CacheDB !== 'undefined' && CacheDB.delete) {
+    // ✅ NE PAS SUPPRIMER - marquer comme synchronisé
+    // Ainsi l'entrée locale reste visible même si la connexion part
+    if (typeof CacheDB !== 'undefined' && CacheDB.get) {
         try {
-            await CacheDB.delete('ventes', localVenteId);
-            if (localCreditId) await CacheDB.delete('credits', localCreditId);
-        } catch(e) { /* ignore */ }
-    }
-
-    var firestoreVente = Object.assign({}, cleanData, { id: ventesRef.id, _synced: true });
-    if (typeof CacheDB !== 'undefined' && CacheDB.set) {
-        await CacheDB.set('ventes', ventesRef.id, firestoreVente);
-        if (creditsRef) {
-            await CacheDB.set('credits', creditsRef.id, Object.assign({}, cleanData, { id: creditsRef.id, _synced: true }));
+            var existingLocal = await CacheDB.get('ventes', localVenteId);
+            if (existingLocal) {
+                var updatedLocal = Object.assign({}, existingLocal, {
+                    _synced: true,
+                    _offline: false,
+                    _firestoreId: ventesRef.id,
+                    _syncedAt: Date.now()
+                });
+                await CacheDB.set('ventes', localVenteId, updatedLocal);
+                console.log('✅ Entrée locale marquée synchronisée:', localVenteId);
+            }
+        } catch(e) {
+            console.warn('⚠️ Erreur mise à jour locale:', e);
         }
     }
 
-    return { success: true, venteId: ventesRef.id };
+    // Créer aussi l'entrée Firestore pour référence (avec l'ID Firestore)
+    var firestoreVente = Object.assign({}, cleanData, {
+        id: ventesRef.id,
+        _synced: true,
+        _localVenteId: localVenteId
+    });
+    if (typeof CacheDB !== 'undefined' && CacheDB.set) {
+        try {
+            await CacheDB.set('ventes', ventesRef.id, firestoreVente);
+        } catch(e) { /* ignore */ }
+    }
+
+    // Idem pour crédits
+    if (creditsRef && localCreditId) {
+        try {
+            var existingCreditLocal = await CacheDB.get('credits', localCreditId);
+            if (existingCreditLocal) {
+                var updatedCreditLocal = Object.assign({}, existingCreditLocal, {
+                    _synced: true,
+                    _offline: false,
+                    _firestoreId: creditsRef.id,
+                    _syncedAt: Date.now()
+                });
+                await CacheDB.set('credits', localCreditId, updatedCreditLocal);
+            }
+            await CacheDB.set('credits', creditsRef.id, Object.assign({}, cleanData, {
+                id: creditsRef.id,
+                _synced: true,
+                _localCreditId: localCreditId
+            }));
+        } catch(e) { /* ignore */ }
+    }
+
+    // ✅ Sauvegarder dans localStorage
+    if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
+        try {
+            CacheDB.saveCollection('ventes');
+            if (creditsRef) CacheDB.saveCollection('credits');
+        } catch(e) { /* ignore */ }
+    }
+
+    return { success: true, venteId: ventesRef.id, localVenteId: localVenteId };
 }
 
 // ✅ ENREGISTRER UNE VENTE (point d'entrée principal - gère online/offline)
@@ -199,7 +246,7 @@ async function posEnregistrerVente(saleData) {
     // Sauvegarder dans CacheDB immédiatement
     var localVente = Object.assign({}, saleData, {
         id: localVenteId,
-        _offline: true,
+        _offline: !navigator.onLine,
         _synced: false,
         _createdAt: Date.now(),
         createdAt: { seconds: Math.floor(Date.now() / 1000) }
@@ -207,10 +254,10 @@ async function posEnregistrerVente(saleData) {
 
     if (typeof CacheDB !== 'undefined' && CacheDB.set) {
         await CacheDB.set('ventes', localVenteId, localVente);
-        if (!saleData.paid) {
+        if (!saleData.paid && localCreditId) {
             var localCredit = Object.assign({}, saleData, {
                 id: localCreditId,
-                _offline: true,
+                _offline: !navigator.onLine,
                 _synced: false,
                 _linkedVenteId: localVenteId,
                 _createdAt: Date.now(),
@@ -220,13 +267,21 @@ async function posEnregistrerVente(saleData) {
         }
     }
 
+    // ✅ Sauvegarde immédiate du cache (persistance)
+    if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
+        try {
+            CacheDB.saveCollection('ventes');
+            if (!saleData.paid) CacheDB.saveCollection('credits');
+        } catch(e) { /* ignore */ }
+    }
+
     // Si en ligne → tenter l'envoi direct
     if (navigator.onLine) {
         try {
             var result = await posPushSaleToFirestore(saleData, localVenteId, localCreditId);
             if (result.success) {
                 console.log('✅ Vente envoyée directement à Firestore:', saleData.factureNum);
-                return { success: true, online: true, venteId: result.venteId, queued: false };
+                return { success: true, online: true, venteId: result.venteId, localVenteId: localVenteId, queued: false };
             }
         } catch(e) {
             console.warn('⚠️ Échec envoi direct, mise en file:', e.message);
@@ -240,8 +295,8 @@ async function posEnregistrerVente(saleData) {
         localCreditId: localCreditId
     });
 
-    console.log('📴 Vente enregistrée hors-ligne:', saleData.factureNum);
-    return { success: true, online: false, venteId: localVenteId, queued: true };
+    console.log('📴 Vente enregistrée hors-ligne (visible + en file):', saleData.factureNum);
+    return { success: true, online: false, venteId: localVenteId, localVenteId: localVenteId, queued: true };
 }
 
 // ✅ SYNCHRONISER LES VENTES EN ATTENTE
@@ -362,6 +417,53 @@ function posUpdateOnlineStatus() {
     posUpdatePendingBadge();
 }
 
+// ✅ NETTOYER LES DOUBLONS DANS LE CACHE (local + firestore pour la même vente)
+async function posNettoyerDoublonsCache() {
+    if (typeof CacheDB === 'undefined' || !CacheDB.getAll) return;
+
+    try {
+        var toutes = await CacheDB.getAll('ventes');
+        if (!toutes || toutes.length === 0) return;
+
+        // Grouper par factureNum
+        var parFacture = {};
+        toutes.forEach(function(v) {
+            if (!v.factureNum) return;
+            if (!parFacture[v.factureNum]) parFacture[v.factureNum] = [];
+            parFacture[v.factureNum].push(v);
+        });
+
+        var aSupprimer = [];
+        Object.keys(parFacture).forEach(function(facture) {
+            var groupe = parFacture[facture];
+            if (groupe.length <= 1) return;
+
+            // Trier : version Firestore (_synced: true + id Firestore) prioritaire
+            groupe.sort(function(a, b) {
+                var aScore = (a._synced ? 10 : 0) + (a._firestoreId ? 5 : 0);
+                var bScore = (b._synced ? 10 : 0) + (b._firestoreId ? 5 : 0);
+                return bScore - aScore;
+            });
+
+            for (var i = 1; i < groupe.length; i++) {
+                aSupprimer.push(groupe[i].id);
+            }
+        });
+
+        if (aSupprimer.length > 0) {
+            console.log('🧹 Nettoyage de', aSupprimer.length, 'doublon(s) dans le cache');
+            for (var k = 0; k < aSupprimer.length; k++) {
+                try {
+                    await CacheDB.delete('ventes', aSupprimer[k]);
+                } catch(e) { }
+            }
+            if (CacheDB.saveCollection) CacheDB.saveCollection('ventes');
+        }
+    } catch(e) {
+        console.warn('⚠️ Erreur nettoyage cache:', e);
+    }
+}
+
 // ✅ INITIALISATION DU SYSTÈME DE SYNC
 function posInitSync() {
     window.addEventListener('online', posUpdateOnlineStatus);
@@ -383,6 +485,7 @@ function posInitSync() {
 
     setTimeout(posUpdateOnlineStatus, 2000);
     posUpdatePendingBadge();
+    setTimeout(posNettoyerDoublonsCache, 3000);
     console.log('📡 Système de synchronisation initialisé');
 }
 
@@ -2822,6 +2925,7 @@ window.posSyncPendingSales = posSyncPendingSales;
 window.posGetPendingSales = posGetPendingSales;
 window.posUpdatePendingBadge = posUpdatePendingBadge;
 window.posShowToast = posShowToast;
+window.posNettoyerDoublonsCache = posNettoyerDoublonsCache;
 
 console.log('🚀 E-SOLUTION - POS chargé avec corrections');
 console.log('✅ forceUpdateClient disponible');
@@ -2836,5 +2940,5 @@ console.log('✅ LIMITE À ' + MAX_PANIERS + ' PANIERS MAXIMUM');
 console.log('✅ NAVIGATION FLUIDE ENTRE PANIERS AVEC RE-RENDU COMPLET');
 console.log('✅ SUPPRESSION IMMÉDIATE DES PANIERS AVEC RE-RENDU COMPLET');
 console.log('✅ RÉORGANISATION DES NUMÉROS DE PANIERS (1 À ' + MAX_PANIERS + ')');
-console.log('✅ MODE HORS-LIGNE : Ventes synchronisées automatiquement au retour de la connexion');
+console.log('✅ MODE HORS-LIGNE PERSISTANT : Vente toujours visible + sync automatique');
 console.log('⚡ OPTIMISATIONS : cache recherche + content-visibility + batch 30 + debounce 80ms');
