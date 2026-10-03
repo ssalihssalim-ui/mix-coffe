@@ -19,7 +19,7 @@
 // ✅ RÉORGANISATION DES NUMÉROS DE PANIERS (1 À 5)
 // ✅ BARRE CATÉGORIES SLIDE SUPPRIMÉE DÉFINITIVEMENT
 // ✅ BOUTONS TABLES/EN LIGNE MASQUÉS POUR LE CLIENT
-// ✅ MODE HORS-LIGNE : Ventes enregistrées localement et synchronisées automatiquement
+// ✅ MODE HORS-LIGNE : Vente visible immédiatement dans la liste + sync automatique
 // ⚡ OPTIMISATIONS : cache recherche + content-visibility + batch 30 + debounce 80ms
 
 var posCart = [];
@@ -171,14 +171,16 @@ async function posPushSaleToFirestore(saleData, localVenteId, localCreditId) {
 
     await batch.commit();
 
-    // Remplacer l'entrée locale par l'entrée Firestore dans le cache
+    // ✅ IMPORTANT : supprimer l'entrée locale (elle a maintenant son équivalent Firestore)
     if (typeof CacheDB !== 'undefined' && CacheDB.delete) {
         try {
             await CacheDB.delete('ventes', localVenteId);
             if (localCreditId) await CacheDB.delete('credits', localCreditId);
+            console.log('🗑️ Entrée locale supprimée après sync:', localVenteId);
         } catch(e) { /* ignore */ }
     }
 
+    // ✅ Ajouter la version Firestore dans le cache (avec le vrai ID)
     var firestoreVente = Object.assign({}, cleanData, { id: ventesRef.id, _synced: true });
     if (typeof CacheDB !== 'undefined' && CacheDB.set) {
         await CacheDB.set('ventes', ventesRef.id, firestoreVente);
@@ -187,19 +189,26 @@ async function posPushSaleToFirestore(saleData, localVenteId, localCreditId) {
         }
     }
 
+    // ✅ Sauvegarder le cache
+    if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
+        try {
+            CacheDB.saveCollection('ventes');
+            if (creditsRef) CacheDB.saveCollection('credits');
+        } catch(e) { /* ignore */ }
+    }
+
     return { success: true, venteId: ventesRef.id };
 }
 
-// ✅ ENREGISTRER UNE VENTE (point d'entrée principal - gère online/offline)
+// ✅ ENREGISTRER UNE VENTE (visible immédiatement dans la liste, sync auto si hors-ligne)
 async function posEnregistrerVente(saleData) {
-    // Toujours enregistrer en local d'abord (visible dans les listes)
+    // ✅ 1. TOUJOURS sauvegarder dans CacheDB immédiatement (visible dans la liste)
     var localVenteId = 'vente_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     var localCreditId = !saleData.paid ? ('credit_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6)) : null;
 
-    // Sauvegarder dans CacheDB immédiatement
     var localVente = Object.assign({}, saleData, {
         id: localVenteId,
-        _offline: true,
+        _offline: !navigator.onLine,
         _synced: false,
         _createdAt: Date.now(),
         createdAt: { seconds: Math.floor(Date.now() / 1000) }
@@ -207,10 +216,10 @@ async function posEnregistrerVente(saleData) {
 
     if (typeof CacheDB !== 'undefined' && CacheDB.set) {
         await CacheDB.set('ventes', localVenteId, localVente);
-        if (!saleData.paid) {
+        if (!saleData.paid && localCreditId) {
             var localCredit = Object.assign({}, saleData, {
                 id: localCreditId,
-                _offline: true,
+                _offline: !navigator.onLine,
                 _synced: false,
                 _linkedVenteId: localVenteId,
                 _createdAt: Date.now(),
@@ -220,7 +229,15 @@ async function posEnregistrerVente(saleData) {
         }
     }
 
-    // Si en ligne → tenter l'envoi direct
+    // ✅ 2. Sauvegarder immédiatement dans localStorage (persistance)
+    if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
+        try {
+            CacheDB.saveCollection('ventes');
+            if (!saleData.paid) CacheDB.saveCollection('credits');
+        } catch(e) { /* ignore */ }
+    }
+
+    // ✅ 3. Si en ligne → tenter l'envoi direct à Firestore
     if (navigator.onLine) {
         try {
             var result = await posPushSaleToFirestore(saleData, localVenteId, localCreditId);
@@ -233,14 +250,14 @@ async function posEnregistrerVente(saleData) {
         }
     }
 
-    // Hors ligne ou échec → mettre en file d'attente
+    // ✅ 4. Hors ligne ou échec → ajouter à la file de sync (mais la vente reste visible dans le cache)
     posAddPendingSale({
         saleData: saleData,
         localVenteId: localVenteId,
         localCreditId: localCreditId
     });
 
-    console.log('📴 Vente enregistrée hors-ligne:', saleData.factureNum);
+    console.log('📴 Vente enregistrée hors-ligne (visible + en file):', saleData.factureNum);
     return { success: true, online: false, venteId: localVenteId, queued: true };
 }
 
@@ -2836,5 +2853,5 @@ console.log('✅ LIMITE À ' + MAX_PANIERS + ' PANIERS MAXIMUM');
 console.log('✅ NAVIGATION FLUIDE ENTRE PANIERS AVEC RE-RENDU COMPLET');
 console.log('✅ SUPPRESSION IMMÉDIATE DES PANIERS AVEC RE-RENDU COMPLET');
 console.log('✅ RÉORGANISATION DES NUMÉROS DE PANIERS (1 À ' + MAX_PANIERS + ')');
-console.log('✅ MODE HORS-LIGNE : Ventes synchronisées automatiquement au retour de la connexion');
+console.log('✅ MODE HORS-LIGNE : Vente visible immédiatement dans la liste + synchronisation automatique');
 console.log('⚡ OPTIMISATIONS : cache recherche + content-visibility + batch 30 + debounce 80ms');
