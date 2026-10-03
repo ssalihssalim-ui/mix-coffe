@@ -10,8 +10,9 @@
 // ✅ SYNCHRONISATION AVEC ADMIN VENTES : Quand un crédit est payé, la vente se met à jour
 // ✅ SEUL L'ADMIN PEUT SUPPRIMER - LE CAISSIER N'A PAS LE BOUTON SUPPRIMER
 // ✅ GESTION DES CRÉDITS À 0 MAD : Marqué comme payé automatiquement
-// ✅ FUSION CACHE + FIRESTORE SANS DOUBLONS - Crédits visibles en permanence
-// ✅ TRI DESCENDANT PAR DATE (même hors-ligne)
+// ✅ AFFICHAGE UNIQUEMENT DEPUIS CACHEDB - FIREBASE SERT À LA SYNC
+// ✅ DÉDUPLICATION PAR FACTURENUM - AUCUN DOUBLON
+// ✅ TRI DESCENDANT PAR DATE
 
 // ========== VARIABLES GLOBALES ==========
 window.creditsPeriod = window.creditsPeriod || 'all';
@@ -958,7 +959,7 @@ clearBtn.classList.add('hidden');
 }
 }
 
-// ==================== loadCredits - VERSION AVEC FUSION CACHE + FIRESTORE ====================
+// ==================== loadCredits - AFFICHAGE UNIQUEMENT DEPUIS CACHEDB ====================
 async function loadCredits() {
     var isAdmin = window.currentUserData && window.currentUserData.userData.role === 'admin';
     var vendeurCaissier = '';
@@ -966,7 +967,7 @@ async function loadCredits() {
         vendeurCaissier = window.currentUserData.userData.prenom + ' ' + window.currentUserData.userData.nom;
     }
 
-    // ✅ 1. Charger TOUJOURS depuis CacheDB d'abord
+    // ✅ Charger UNIQUEMENT depuis CacheDB (source de vérité)
     try {
         const cached = await CacheDB.getAll('credits');
         if (cached && cached.length) {
@@ -978,114 +979,42 @@ async function loadCredits() {
                 });
             }
 
-            // ✅ TRI DESCENDANT par date
+            // ✅ Déduplication par factureNum
+            var vues = {};
+            var uniques = [];
             localCredits.sort(function(a, b) {
+                var sa = (a._firestoreId ? 10 : 0) + (a._synced ? 5 : 0);
+                var sb = (b._firestoreId ? 10 : 0) + (b._synced ? 5 : 0);
+                if (sa !== sb) return sb - sa;
+                return getCreditTimestamp(b) - getCreditTimestamp(a);
+            });
+            localCredits.forEach(function(v) {
+                var key = v.factureNum || v.id;
+                if (vues[key]) return;
+                vues[key] = true;
+                uniques.push(v);
+            });
+
+            // ✅ TRI DESCENDANT par date
+            uniques.sort(function(a, b) {
                 return getCreditTimestamp(b) - getCreditTimestamp(a);
             });
 
-            window.allCreditsData = localCredits;
+            window.allCreditsData = uniques;
 
             if (!window.sortOrders.credits) window.sortOrders.credits = {};
             if (!window.sortOrders.credits.createdAt) window.sortOrders.credits.createdAt = 'desc';
 
             window.currentPages.credits = 1;
             applyCreditsFilters();
-            console.log('⚡ Crédits depuis CacheDB:', window.allCreditsData.length);
+            console.log('⚡ Crédits depuis CacheDB (uniques):', window.allCreditsData.length);
+        } else {
+            window.allCreditsData = [];
+            applyCreditsFilters();
         }
     } catch(e) {
         console.warn('⚠️ Erreur lecture CacheDB crédits:', e);
     }
-
-    // ✅ 2. Charger depuis Firestore (si en ligne) ET FUSIONNER
-    if (navigator.onLine) {
-        try {
-            const snapshot = await db.collection('credits').orderBy('createdAt', 'desc').limit(2000).get();
-
-            var existingFirestoreIds = new Set();
-            var existingFactureNums = new Set();
-            var existingLocalIds = new Set();
-
-            window.allCreditsData.forEach(function(v) {
-                if (v.id) existingLocalIds.add(v.id);
-                if (v._firestoreId) existingFirestoreIds.add(v._firestoreId);
-                if (v.factureNum) existingFactureNums.add(v.factureNum);
-            });
-
-            var freshCredits = [];
-            snapshot.forEach(function(dc) {
-                var d = dc.data();
-                d.id = dc.id;
-                d._synced = true;
-                freshCredits.push(d);
-            });
-
-            if (!isAdmin) {
-                freshCredits = freshCredits.filter(function(d) {
-                    return d.vendeur === vendeurCaissier;
-                });
-            }
-
-            // ✅ FUSION : partir des crédits locaux + ajouter les Firestore pas déjà présents
-            var finalCredits = window.allCreditsData.slice();
-
-            freshCredits.forEach(function(fv) {
-                var alreadyExists = false;
-
-                if (existingFirestoreIds.has(fv.id)) alreadyExists = true;
-
-                if (!alreadyExists && fv.factureNum && existingFactureNums.has(fv.factureNum)) {
-                    alreadyExists = true;
-                    for (var i = 0; i < finalCredits.length; i++) {
-                        var lv = finalCredits[i];
-                        if (lv.factureNum && fv.factureNum && lv.factureNum === fv.factureNum) {
-                            finalCredits[i] = Object.assign({}, fv, {
-                                id: lv.id,
-                                _firestoreId: fv.id,
-                                _synced: true,
-                                _offline: false
-                            });
-                            break;
-                        }
-                    }
-                }
-
-                if (!alreadyExists && existingLocalIds.has(fv.id)) alreadyExists = true;
-
-                if (!alreadyExists) {
-                    finalCredits.push(fv);
-                    try { CacheDB.set('credits', fv.id, fv); } catch(e) { }
-                }
-            });
-
-            for (var j = 0; j < freshCredits.length; j++) {
-                try { await CacheDB.set('credits', freshCredits[j].id, freshCredits[j]); } catch(e) { }
-            }
-
-            if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
-                try { CacheDB.saveCollection('credits'); } catch(e) { }
-            }
-
-            // ✅ TRI DESCENDANT par date
-            finalCredits.sort(function(a, b) {
-                return getCreditTimestamp(b) - getCreditTimestamp(a);
-            });
-
-            window.allCreditsData = finalCredits;
-
-            if (!window.sortOrders.credits) window.sortOrders.credits = {};
-            if (!window.sortOrders.credits.createdAt) window.sortOrders.credits.createdAt = 'desc';
-
-            console.log('🔥 Crédits Firestore:', freshCredits.length, '| Total après fusion:', finalCredits.length);
-
-        } catch(e) {
-            console.error('❌ Erreur chargement Firestore crédits:', e);
-        }
-    } else {
-        console.log('📴 Hors ligne - Affichage uniquement depuis CacheDB');
-    }
-
-    window.currentPages.credits = 1;
-    applyCreditsFilters();
 }
 
 function applyCreditsFilters() {
@@ -1727,19 +1656,20 @@ async function loadCreditFactureDetails(creditId) {
     if (!body) return;
     
     try {
-        var doc = await db.collection('credits').doc(creditId).get();
-        
-        if (!doc.exists) {
-            body.innerHTML = `
-                <div style="text-align:center;padding:40px;">
-                    <i class="fas fa-exclamation-triangle" style="font-size:3rem;color:var(--danger);"></i>
-                    <p style="color:var(--text-secondary);margin-top:12px;font-size:1.1rem;">Crédit non trouvé</p>
-                </div>
-            `;
-            return;
+        var data = await CacheDB.get('credits', creditId);
+        if (!data) {
+            var doc = await db.collection('credits').doc(creditId).get();
+            if (!doc.exists) {
+                body.innerHTML = `
+                    <div style="text-align:center;padding:40px;">
+                        <i class="fas fa-exclamation-triangle" style="font-size:3rem;color:var(--danger);"></i>
+                        <p style="color:var(--text-secondary);margin-top:12px;font-size:1.1rem;">Crédit non trouvé</p>
+                    </div>
+                `;
+                return;
+            }
+            data = doc.data();
         }
-        
-        var data = doc.data();
         renderCreditFactureDetails(data);
         
     } catch(e) {
@@ -1876,20 +1806,28 @@ function printCreditFactureDetails() {
 // ==================== ENVOYER WHATSAPP POUR UN CRÉDIT ====================
 async function sendCreditWhatsApp(creditId) {
     try {
-        const doc = await db.collection('credits').doc(creditId).get();
-        if (!doc.exists) {
-            alert('❌ Crédit introuvable');
-            return;
+        // ✅ Chercher dans le CacheDB d'abord
+        var credit = await CacheDB.get('credits', creditId);
+        if (!credit) {
+            const doc = await db.collection('credits').doc(creditId).get();
+            if (!doc.exists) {
+                alert('❌ Crédit introuvable');
+                return;
+            }
+            credit = doc.data();
         }
         
-        const credit = doc.data();
         let phone = '';
 
         if (credit.clientId) {
-            const clientDoc = await db.collection('clients').doc(credit.clientId).get();
-            if (clientDoc.exists) {
-                const clientData = clientDoc.data();
-                phone = clientData.whatsapp || clientData.telephone || '';
+            // Chercher dans le cache clients
+            var client = await CacheDB.get('clients', credit.clientId);
+            if (!client) {
+                const clientDoc = await db.collection('clients').doc(credit.clientId).get();
+                if (clientDoc.exists) client = clientDoc.data();
+            }
+            if (client) {
+                phone = client.whatsapp || client.telephone || '';
             }
         }
         
@@ -1957,8 +1895,11 @@ async function payerCredit(creditId) {
 }
 
 function printFacture(did) {
+CacheDB.get('credits', did).then(function(d) {
+if (d) { imprimerFactureCredit(d, did); return; }
 db.collection('credits').doc(did).get().then(function(dc) {
-if (dc.exists) imprimerFactureCredit(dc.data(), dc.id);
+if (dc.exists) imprimerFactureCredit(dc.data(), did);
+});
 });
 }
 
@@ -2015,12 +1956,15 @@ setTimeout(function() { w.print(); }, 500);
 
 async function editCredit(id) {
 try {
+var d = await CacheDB.get('credits', id);
+if (!d) {
 var doc = await db.collection('credits').doc(id).get();
 if (!doc.exists) {
 alert('Crédit introuvable');
 return;
 }
-var d = doc.data();
+d = doc.data();
+}
 window.editingId = id;
 window.currentCollection = 'credits';
 
@@ -2088,6 +2032,13 @@ updatedAt: firebase.firestore.FieldValue.serverTimestamp()
 };
 
 try {
+// ✅ Mettre à jour dans CacheDB
+var existing = await CacheDB.get('credits', window.editingId);
+if (existing) {
+var updated = Object.assign({}, existing, data);
+await CacheDB.set('credits', window.editingId, updated);
+}
+// ✅ Synchroniser avec Firestore
 await CacheDB.write('credits', window.editingId, data, 'update');
 closeModal();
 loadCredits();
@@ -2327,6 +2278,8 @@ window.changePage = window.changePage || changePage;
 window.getPageData = window.getPageData || getPageData;
 
 console.log('🚀 E-SOLUTION - Admin Credits PRO chargé');
+console.log('✅ AFFICHAGE UNIQUEMENT DEPUIS CACHEDB');
+console.log('✅ DÉDUPLICATION PAR FACTURENUM');
 console.log('✅ Détails facture crédit modal ajouté');
 console.log('✅ Paiement crédit avec modal');
 console.log('✅ Pagination corrigée');
@@ -2339,5 +2292,4 @@ console.log('✅ Statistiques en haut de page avec filtres de date');
 console.log('✅ Paiement crédit : Le champ "Reste à payer" diminue correctement');
 console.log('✅ Synchronisation avec admin ventes');
 console.log('✅ Gestion des crédits à 0 MAD');
-console.log('✅ FUSION CACHE + FIRESTORE : Crédits visibles en permanence, sans doublons');
-console.log('✅ TRI DESCENDANT PAR DATE : Les crédits les plus récents en premier (même hors-ligne)');
+console.log('✅ TRI DESCENDANT PAR DATE');
