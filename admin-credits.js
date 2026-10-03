@@ -10,6 +10,8 @@
 // ✅ SYNCHRONISATION AVEC ADMIN VENTES : Quand un crédit est payé, la vente se met à jour
 // ✅ SEUL L'ADMIN PEUT SUPPRIMER - LE CAISSIER N'A PAS LE BOUTON SUPPRIMER
 // ✅ GESTION DES CRÉDITS À 0 MAD : Marqué comme payé automatiquement
+// ✅ FUSION CACHE + FIRESTORE SANS DOUBLONS - Crédits visibles en permanence
+// ✅ TRI DESCENDANT PAR DATE (même hors-ligne)
 
 // ========== VARIABLES GLOBALES ==========
 window.creditsPeriod = window.creditsPeriod || 'all';
@@ -20,7 +22,7 @@ window.allCreditsData = window.allCreditsData || [];
 window.clientsDataForSearch = window.clientsDataForSearch || [];
 window._posFilterClientId = null;
 window._posFilterClientName = null;
-window._fromPos = false;  // ✅ Indique si on vient du POS
+window._fromPos = false;
 window.creditsDateDebut = window.creditsDateDebut || '';
 window.creditsDateFin = window.creditsDateFin || '';
 
@@ -53,6 +55,18 @@ return { date, time, full: date + ' ' + time };
 
 function normalize(str) {
 return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+// ✅ Fonction utilitaire pour récupérer le timestamp d'un crédit (Firestore ou local)
+function getCreditTimestamp(credit) {
+    if (!credit) return 0;
+    if (credit.createdAt && credit.createdAt.seconds) {
+        return credit.createdAt.seconds;
+    }
+    if (credit._createdAt) {
+        return Math.floor(credit._createdAt / 1000);
+    }
+    return 0;
 }
 
 function detectPeriodFilterCredits(text) {
@@ -442,7 +456,6 @@ flex-wrap: nowrap !important;
 min-width: 160px !important;
 }
 
-/* ✅ BOUTONS AVEC TEXTE - ULTRA COMPACT */
 #creditsPage .action-buttons .btn-print,
 #creditsPage .action-buttons .btn-whatsapp,
 #creditsPage .action-buttons .btn-payer,
@@ -544,7 +557,6 @@ min-width: 160px !important;
     }
 }
 
-/* ✅ STATS EN HAUT DE PAGE - COMME ADMIN VENTES */
 .credits-stats-grid {
 display: grid;
 grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -707,21 +719,19 @@ injectCreditsStyles();
 
 await loadClientsForSearchCredits();
 
-// ✅ Vérifier si on vient du POS avec un client pré-sélectionné
 var savedClientId = localStorage.getItem('posSelectedCreditClientId');
 var savedClientName = localStorage.getItem('posSelectedCreditClientName');
 
 if (savedClientId && savedClientName) {
     window._posFilterClientId = savedClientId;
     window._posFilterClientName = savedClientName;
-    window._fromPos = true;  // ✅ On vient du POS
-    // Nettoyer le localStorage après récupération
+    window._fromPos = true;
     localStorage.removeItem('posSelectedCreditClientId');
     localStorage.removeItem('posSelectedCreditClientName');
 } else {
     window._posFilterClientId = null;
     window._posFilterClientName = null;
-    window._fromPos = false;  // ✅ Navigation normale
+    window._fromPos = false;
 }
 
 window.creditsPeriod = 'all';
@@ -734,10 +744,8 @@ window.creditSelectedIds = [];
 if (!window.sortOrders.credits) window.sortOrders.credits = {};
 if (!window.sortOrders.credits.createdAt) window.sortOrders.credits.createdAt = 'desc';
 
-// ✅ Si un client est pré-sélectionné, on met son nom dans la recherche
 var searchPlaceholder = window._posFilterClientName || 'Rechercher (client, produit, description)...';
 
-// ✅ Afficher le bouton uniquement si on vient du POS
 var showBackButton = window._fromPos ? '' : 'display:none;';
 var filterMessage = window._posFilterClientName ? 
     `<div style="padding:8px 12px; background:#f0fdf4; border-radius:8px; margin-top:8px; border:2px solid #14B8A6; font-size:18px; font-weight:600; color:#0D9488;">
@@ -828,16 +836,13 @@ onkeyup="handleCreditsSearch(this.value);">
 
 loadCredits();
 
-// ✅ Si un client est pré-sélectionné, on remplit la barre de recherche et on lance la recherche
 if (window._posFilterClientName) {
     setTimeout(function() {
         var searchInput = document.getElementById('creditsSearchInput');
         if (searchInput) {
             searchInput.value = window._posFilterClientName;
-            // Déclencher la recherche automatiquement
             window.creditsSearch = window._posFilterClientName;
             applyCreditsFilters();
-            // Afficher le bouton "effacer"
             var clearBtn = document.getElementById('creditsClearBtn');
             if (clearBtn) clearBtn.classList.remove('hidden');
         }
@@ -845,20 +850,17 @@ if (window._posFilterClientName) {
 }
 }
 
-// ✅ Fonction pour appliquer le filtre de date personnalisé
 function appliquerFiltreDatePersonnaliseCredits() {
 var debut = document.getElementById('creditsDateDebut').value;
 var fin = document.getElementById('creditsDateFin').value;
 window.creditsDateDebut = debut;
 window.creditsDateFin = fin;
-// Réinitialiser le select de période
 document.getElementById('creditsPeriodSelect').value = 'all';
 window.creditsPeriod = 'all';
 applyCreditsFilters();
 }
 window.appliquerFiltreDatePersonnaliseCredits = appliquerFiltreDatePersonnaliseCredits;
 
-// ✅ Fonction pour réinitialiser tous les filtres
 function reinitialiserFiltresCredits() {
 document.getElementById('creditsDateDebut').value = '';
 document.getElementById('creditsDateFin').value = '';
@@ -872,7 +874,6 @@ window._posFilterClientId = null;
 window._posFilterClientName = null;
 window._fromPos = false;
 applyCreditsFilters();
-// ✅ Recharger la page pour enlever le bouton
 loadCreditsPage(document.getElementById('dynamicContent'));
 }
 window.reinitialiserFiltresCredits = reinitialiserFiltresCredits;
@@ -889,7 +890,6 @@ var searchField = document.getElementById('creditsSearchInput');
 if (searchField) {
 searchField.value = '';
 window.creditsSearch = '';
-// ✅ Réinitialiser aussi le filtre client
 window._posFilterClientId = null;
 window._posFilterClientName = null;
 window._fromPos = false;
@@ -898,7 +898,6 @@ var clearBtn = document.getElementById('creditsClearBtn');
 if (clearBtn) {
 clearBtn.classList.add('hidden');
 }
-// ✅ Recharger la page pour enlever le bouton
 loadCreditsPage(document.getElementById('dynamicContent'));
 }
 }
@@ -959,80 +958,156 @@ clearBtn.classList.add('hidden');
 }
 }
 
+// ==================== loadCredits - VERSION AVEC FUSION CACHE + FIRESTORE ====================
 async function loadCredits() {
-var isAdmin = window.currentUserData && window.currentUserData.userData.role === 'admin';
-var vendeurCaissier = '';
-if (!isAdmin && window.currentUserData) {
-vendeurCaissier = window.currentUserData.userData.prenom + ' ' + window.currentUserData.userData.nom;
-}
+    var isAdmin = window.currentUserData && window.currentUserData.userData.role === 'admin';
+    var vendeurCaissier = '';
+    if (!isAdmin && window.currentUserData) {
+        vendeurCaissier = window.currentUserData.userData.prenom + ' ' + window.currentUserData.userData.nom;
+    }
 
-const cached = await CacheDB.getAll('credits');
-if (cached.length) {
-window.allCreditsData = cached;
-if (!isAdmin) {
-window.allCreditsData = window.allCreditsData.filter(function(d) {
-return d.vendeur === vendeurCaissier;
-});
-}
-if (!window.sortOrders.credits) window.sortOrders.credits = {};
-if (!window.sortOrders.credits.createdAt) window.sortOrders.credits.createdAt = 'desc';
-window.currentPages.credits = 1;
-applyCreditsFilters();
-}
+    // ✅ 1. Charger TOUJOURS depuis CacheDB d'abord
+    try {
+        const cached = await CacheDB.getAll('credits');
+        if (cached && cached.length) {
+            var localCredits = cached.slice();
 
-if (navigator.onLine) {
-try {
-const snapshot = await db.collection('credits').orderBy('createdAt', 'desc').limit(2000).get();
-window.allCreditsData = [];
-snapshot.forEach(function(dc) {
-var d = dc.data();
-d.id = dc.id;
-window.allCreditsData.push(d);
-});
+            if (!isAdmin) {
+                localCredits = localCredits.filter(function(d) {
+                    return d.vendeur === vendeurCaissier;
+                });
+            }
 
-if (!isAdmin) {
-window.allCreditsData = window.allCreditsData.filter(function(d) {
-return d.vendeur === vendeurCaissier;
-});
-}
+            // ✅ TRI DESCENDANT par date
+            localCredits.sort(function(a, b) {
+                return getCreditTimestamp(b) - getCreditTimestamp(a);
+            });
 
-for (let doc of window.allCreditsData) {
-await CacheDB.set('credits', doc.id, doc);
-}
+            window.allCreditsData = localCredits;
 
-if (!window.sortOrders.credits) window.sortOrders.credits = {};
-if (!window.sortOrders.credits.createdAt) window.sortOrders.credits.createdAt = 'desc';
-} catch (e) {
-console.error('Erreur chargement crédits:', e);
-}
-}
+            if (!window.sortOrders.credits) window.sortOrders.credits = {};
+            if (!window.sortOrders.credits.createdAt) window.sortOrders.credits.createdAt = 'desc';
 
-window.currentPages.credits = 1;
-applyCreditsFilters();
+            window.currentPages.credits = 1;
+            applyCreditsFilters();
+            console.log('⚡ Crédits depuis CacheDB:', window.allCreditsData.length);
+        }
+    } catch(e) {
+        console.warn('⚠️ Erreur lecture CacheDB crédits:', e);
+    }
+
+    // ✅ 2. Charger depuis Firestore (si en ligne) ET FUSIONNER
+    if (navigator.onLine) {
+        try {
+            const snapshot = await db.collection('credits').orderBy('createdAt', 'desc').limit(2000).get();
+
+            var existingFirestoreIds = new Set();
+            var existingFactureNums = new Set();
+            var existingLocalIds = new Set();
+
+            window.allCreditsData.forEach(function(v) {
+                if (v.id) existingLocalIds.add(v.id);
+                if (v._firestoreId) existingFirestoreIds.add(v._firestoreId);
+                if (v.factureNum) existingFactureNums.add(v.factureNum);
+            });
+
+            var freshCredits = [];
+            snapshot.forEach(function(dc) {
+                var d = dc.data();
+                d.id = dc.id;
+                d._synced = true;
+                freshCredits.push(d);
+            });
+
+            if (!isAdmin) {
+                freshCredits = freshCredits.filter(function(d) {
+                    return d.vendeur === vendeurCaissier;
+                });
+            }
+
+            // ✅ FUSION : partir des crédits locaux + ajouter les Firestore pas déjà présents
+            var finalCredits = window.allCreditsData.slice();
+
+            freshCredits.forEach(function(fv) {
+                var alreadyExists = false;
+
+                if (existingFirestoreIds.has(fv.id)) alreadyExists = true;
+
+                if (!alreadyExists && fv.factureNum && existingFactureNums.has(fv.factureNum)) {
+                    alreadyExists = true;
+                    for (var i = 0; i < finalCredits.length; i++) {
+                        var lv = finalCredits[i];
+                        if (lv.factureNum && fv.factureNum && lv.factureNum === fv.factureNum) {
+                            finalCredits[i] = Object.assign({}, fv, {
+                                id: lv.id,
+                                _firestoreId: fv.id,
+                                _synced: true,
+                                _offline: false
+                            });
+                            break;
+                        }
+                    }
+                }
+
+                if (!alreadyExists && existingLocalIds.has(fv.id)) alreadyExists = true;
+
+                if (!alreadyExists) {
+                    finalCredits.push(fv);
+                    try { CacheDB.set('credits', fv.id, fv); } catch(e) { }
+                }
+            });
+
+            for (var j = 0; j < freshCredits.length; j++) {
+                try { await CacheDB.set('credits', freshCredits[j].id, freshCredits[j]); } catch(e) { }
+            }
+
+            if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
+                try { CacheDB.saveCollection('credits'); } catch(e) { }
+            }
+
+            // ✅ TRI DESCENDANT par date
+            finalCredits.sort(function(a, b) {
+                return getCreditTimestamp(b) - getCreditTimestamp(a);
+            });
+
+            window.allCreditsData = finalCredits;
+
+            if (!window.sortOrders.credits) window.sortOrders.credits = {};
+            if (!window.sortOrders.credits.createdAt) window.sortOrders.credits.createdAt = 'desc';
+
+            console.log('🔥 Crédits Firestore:', freshCredits.length, '| Total après fusion:', finalCredits.length);
+
+        } catch(e) {
+            console.error('❌ Erreur chargement Firestore crédits:', e);
+        }
+    } else {
+        console.log('📴 Hors ligne - Affichage uniquement depuis CacheDB');
+    }
+
+    window.currentPages.credits = 1;
+    applyCreditsFilters();
 }
 
 function applyCreditsFilters() {
 var filtered = filterByPeriodWithDatesCredits(window.allCreditsData, window.creditsPeriod);
 
-// ✅ Filtre par date personnalisée
 if (window.creditsDateDebut && window.creditsDateFin) {
 var debut = new Date(window.creditsDateDebut);
 debut.setHours(0, 0, 0, 0);
 var fin = new Date(window.creditsDateFin);
 fin.setHours(23, 59, 59, 999);
 filtered = filtered.filter(function(d) {
-if (!d.createdAt) return false;
-var date = new Date(d.createdAt.seconds * 1000);
+var ts = getCreditTimestamp(d);
+if (!ts) return false;
+var date = new Date(ts * 1000);
 return date >= debut && date <= fin;
 });
 }
 
-// ✅ Filtre par client pré-sélectionné depuis le POS (prioritaire sur la recherche)
 if (window._posFilterClientId) {
     filtered = filtered.filter(function(d) {
         return d.clientId === window._posFilterClientId;
     });
-    // On ne réinitialise pas le nom du client pour qu'il reste dans la recherche
 }
 
 if (window.creditsSearch && window.creditsSearch.trim() !== '') {
@@ -1043,19 +1118,13 @@ delete d._clientDisplayName;
 });
 }
 
-if (!window.sortOrders.credits || !window.sortOrders.credits.createdAt) {
+// ✅ TRI DESCENDANT par date (toujours)
 filtered.sort(function(a, b) {
-var da = a.createdAt?.seconds || 0;
-var db = b.createdAt?.seconds || 0;
-return db - da;
+    return getCreditTimestamp(b) - getCreditTimestamp(a);
 });
-} else {
-filtered = applySort('credits', filtered, 'createdAt');
-}
 
 window.filteredCredits = filtered;
 
-// ✅ Mettre à jour les statistiques
 updateCreditsStats(filtered);
 
 renderCreditsTablePro();
@@ -1073,12 +1142,13 @@ if (isNaN(days)) return data;
 cutoff = new Date(now.getTime() - days * 86400000);
 }
 return data.filter(function(d) {
-var date = d.createdAt ? new Date(d.createdAt.seconds * 1000) : null;
+var ts = getCreditTimestamp(d);
+if (!ts) return false;
+var date = new Date(ts * 1000);
 return date && date >= cutoff;
 });
 }
 
-// ✅ Mettre à jour les statistiques en haut de page
 function updateCreditsStats(data) {
 var total = 0, totalImpayes = 0, totalPaye = 0;
 data.forEach(function(d) {
@@ -1102,15 +1172,10 @@ if (!cont) return;
 
 var data = (window.filteredCredits || window.allCreditsData).slice();
 
-if (window.sortOrders.credits && window.sortOrders.credits.createdAt) {
-data = applySort('credits', data, 'createdAt');
-} else {
+// ✅ TRI DESCENDANT par date
 data.sort(function(a, b) {
-var da = a.createdAt?.seconds || 0;
-var db = b.createdAt?.seconds || 0;
-return db - da;
+    return getCreditTimestamp(b) - getCreditTimestamp(a);
 });
-}
 
 var itemsPerPage = window.itemsPerPage || 15;
 var currentPage = window.currentPages.credits || 1;
@@ -1178,7 +1243,6 @@ articlesHtml = '-';
 var mode = d.paymentMethod || '-';
 var amountPaid = d.amountGiven || 0;
 
-// ✅ BOUTONS AVEC TEXTE - UNIQUEMENT LES CLASSES (les styles sont dans le CSS)
 var actions = `
 <div class="action-buttons" style="display:flex; gap:4px; align-items:center; justify-content:center; flex-wrap:nowrap;">
     <button class="btn-print" onclick="printFacture('${d.id}')" title="Imprimer / PDF">Imprimer</button>
@@ -1190,7 +1254,6 @@ if (!d.paid) {
 actions += `
     <button class="btn-edit" onclick="editCredit('${d.id}')" title="Modifier">Modifier</button>
     `;
-// ✅ SEUL L'ADMIN PEUT SUPPRIMER - LE CAISSIER N'A PAS LE BOUTON SUPPRIMER
 if (isAdmin) {
     actions += `<button class="btn-delete" onclick="if(confirm('Supprimer définitivement ce crédit ?')) deleteCredit('${d.id}')" title="Supprimer">Supprimer</button>`;
 }
@@ -1327,6 +1390,7 @@ if (!confirm('Supprimer définitivement les ' + window.creditSelectedIds.length 
 var promises = window.creditSelectedIds.map(function(id) {
 return db.collection('credits').doc(id).delete().then(function() {
 window.allCreditsData = window.allCreditsData.filter(function(c) { return c.id !== id; });
+try { CacheDB.delete('credits', id); } catch(e) { }
 });
 });
 
@@ -1343,7 +1407,6 @@ if (selectAllBtn) selectAllBtn.style.display = 'none';
 loadCredits();
 CacheDB.sync();
 
-// ✅ AJOUT : Sauvegarde du cache
 if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
     CacheDB.saveCollection('credits');
 }
@@ -1354,7 +1417,6 @@ alert('❌ Erreur: ' + e.message);
 
 // ==================== PAIEMENT CRÉDIT (AVEC MODAL) ====================
 
-// Fonction pour ouvrir le modal de paiement crédit
 function openCreditPaymentModal(creditId) {
     var data = window.filteredCredits || window.allCreditsData || [];
     var credit = data.find(function(c) { return c.id === creditId; });
@@ -1371,10 +1433,8 @@ function openCreditPaymentModal(creditId) {
     var restant = credit.remainingAmount || credit.total || 0;
     var total = credit.total || 0;
     
-    // ✅ Si le crédit a un total de 0, on le marque comme payé directement
     if (total <= 0) {
         if (confirm('⚠️ Ce crédit a un total de 0 MAD. Voulez-vous le marquer comme payé ?')) {
-            // Appeler directement la fonction de paiement avec un montant de 0
             confirmerPaiementCreditZero(creditId);
         }
         return;
@@ -1434,7 +1494,6 @@ function openCreditPaymentModal(creditId) {
     openModal('💰 Paiement crédit', modalHtml);
 }
 
-// ✅ Fonction pour gérer les crédits à 0 MAD
 async function confirmerPaiementCreditZero(creditId) {
     try {
         var data = window.filteredCredits || window.allCreditsData || [];
@@ -1464,7 +1523,6 @@ async function confirmerPaiementCreditZero(creditId) {
         var fIndex = (window.filteredCredits || []).findIndex(function(c) { return c.id === creditId; });
         if (fIndex !== -1) window.filteredCredits[fIndex] = updatedCredit;
 
-        // ✅ Synchronisation avec admin ventes
         if (typeof window.synchroVenteDepuisCredit === 'function') {
             var creditData = {
                 id: creditId,
@@ -1497,7 +1555,6 @@ async function confirmerPaiementCreditZero(creditId) {
     }
 }
 
-// Fonction pour confirmer le paiement depuis le modal
 async function confirmCreditPayment(creditId) {
     var amountInput = document.getElementById('creditPaymentAmount');
     if (!amountInput) {
@@ -1539,7 +1596,6 @@ async function confirmCreditPayment(creditId) {
             lastPaymentAmount: montant
         });
 
-        // ✅ Mettre à jour dans le cache
         var updatedCredit = {
             ...credit,
             amountGiven: nouveauPaye,
@@ -1548,19 +1604,16 @@ async function confirmCreditPayment(creditId) {
         };
         await CacheDB.set('credits', creditId, updatedCredit);
         
-        // ✅ Mettre à jour dans allCreditsData
         var index = window.allCreditsData.findIndex(function(c) { return c.id === creditId; });
         if (index !== -1) {
             window.allCreditsData[index] = updatedCredit;
         }
         
-        // ✅ Mettre à jour dans filteredCredits
         var fIndex = (window.filteredCredits || []).findIndex(function(c) { return c.id === creditId; });
         if (fIndex !== -1) {
             window.filteredCredits[fIndex] = updatedCredit;
         }
         
-        // ✅ SYNCHRONISATION AVEC ADMIN VENTES
         if (typeof window.synchroVenteDepuisCredit === 'function') {
             var creditData = {
                 id: creditId,
@@ -1580,18 +1633,15 @@ async function confirmCreditPayment(creditId) {
         
         closeModal();
         
-        // ✅ Rafraîchir l'affichage
         updateCreditsStats(window.filteredCredits || window.allCreditsData);
         renderCreditsTablePro();
         CacheDB.sync();
 
-        // ✅ AJOUT : Sauvegarde du cache
         if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
             CacheDB.saveCollection('credits');
             CacheDB.saveCollection('ventes');
         }
 
-        // Afficher un message de succès
         var message = '✅ Paiement enregistré !\n';
         message += '💰 Montant payé: ' + montant.toFixed(2) + ' MAD\n';
         if (estPaye) {
@@ -1611,10 +1661,8 @@ async function confirmCreditPayment(creditId) {
 
 // ==================== FONCTIONS POUR LE MODAL DÉTAILS FACTURE CRÉDIT ====================
 
-// Variable pour stocker l'ID du crédit en cours
 var currentCreditId = null;
 
-// Fonction pour ouvrir le modal des détails de facture crédit
 function openCreditFactureDetails(creditId, factureNum) {
     var modal = document.getElementById('creditFactureDetailsModal');
     if (!modal) {
@@ -1828,7 +1876,6 @@ function printCreditFactureDetails() {
 // ==================== ENVOYER WHATSAPP POUR UN CRÉDIT ====================
 async function sendCreditWhatsApp(creditId) {
     try {
-        // Récupérer les données du crédit
         const doc = await db.collection('credits').doc(creditId).get();
         if (!doc.exists) {
             alert('❌ Crédit introuvable');
@@ -1838,7 +1885,6 @@ async function sendCreditWhatsApp(creditId) {
         const credit = doc.data();
         let phone = '';
 
-        // Chercher le téléphone du client
         if (credit.clientId) {
             const clientDoc = await db.collection('clients').doc(credit.clientId).get();
             if (clientDoc.exists) {
@@ -1847,7 +1893,6 @@ async function sendCreditWhatsApp(creditId) {
             }
         }
         
-        // Normaliser le numéro
         phone = phone.replace(/[^\d+]/g, '').trim();
         if (phone.startsWith('0')) {
             phone = '+212' + phone.substring(1);
@@ -1860,7 +1905,6 @@ async function sendCreditWhatsApp(creditId) {
             return;
         }
 
-        // Construire le message
         var msg = '🧾 *CRÉDIT E-SOLUTION*\n';
         msg += '━━━━━━━━━━━━━━━━━━\n';
         msg += '📄 N°: ' + (credit.factureNum || creditId.substring(0, 8)) + '\n';
@@ -1884,10 +1928,8 @@ async function sendCreditWhatsApp(creditId) {
 
         var url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
         
-        // Ouvrir WhatsApp
         var w = window.open(url, '_blank');
         if (!w || w.closed) {
-            // Popup bloquée, ouvrir un modal avec le lien
             var modalHtml = `
                 <div style="text-align:center;padding:10px;">
                     <i class="fab fa-whatsapp" style="font-size:4rem;color:#25D366;"></i>
@@ -2052,7 +2094,6 @@ loadCredits();
 CacheDB.sync();
 alert('✅ Crédit mis à jour');
 
-// ✅ AJOUT : Sauvegarde du cache
 if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
     CacheDB.saveCollection('credits');
 }
@@ -2065,10 +2106,10 @@ async function deleteCredit(id) {
 try {
 await db.collection('credits').doc(id).delete();
 window.allCreditsData = (window.allCreditsData || []).filter(function(c) { return c.id !== id; });
+try { CacheDB.delete('credits', id); } catch(e) { }
 if (typeof loadCredits === 'function') loadCredits();
 CacheDB.sync();
 
-// ✅ AJOUT : Sauvegarde du cache
 if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
     CacheDB.saveCollection('credits');
 }
@@ -2080,7 +2121,6 @@ throw e;
 
 // ==================== PAGINATION ====================
 
-// Fonction de pagination générique
 function getPaginationHTML(pageType, totalItems) {
     var perPage = window.itemsPerPage || 15;
     var totalPages = Math.ceil(totalItems / perPage);
@@ -2096,7 +2136,6 @@ function getPaginationHTML(pageType, totalItems) {
     return html;
 }
 
-// Fonction pour changer de page
 function changePage(pageType, page) {
     console.log('🔄 changePage appelé:', pageType, page);
     
@@ -2116,7 +2155,6 @@ function changePage(pageType, page) {
     window.currentPages[pageType] = page;
     console.log('📄 Page courante:', page);
     
-    // Re-rendre la page correspondante
     if (pageType === 'ventes' && typeof window.renderVentesTablePro === 'function') {
         window.renderVentesTablePro();
     } else if (pageType === 'credits' && typeof window.renderCreditsTablePro === 'function') {
@@ -2126,7 +2164,6 @@ function changePage(pageType, page) {
     }
 }
 
-// Fonction pour obtenir les données de la page courante
 function getPageData(pageType, data) {
     if (!window.currentPages) window.currentPages = {};
     var currentPage = window.currentPages[pageType] || 1;
@@ -2138,14 +2175,11 @@ function getPageData(pageType, data) {
 
 // ==================== FONCTIONS MANQUANTES AJOUTÉES ====================
 
-// ✅ FONCTION AJOUTÉE : closeCreditSelection
 function closeCreditSelection() {
-    // Réinitialiser la sélection
     window.creditSelectedIds = [];
     window.creditSelectionMode = false;
     window.selectAllBtnState = false;
 
-    // Mettre à jour l'interface
     var paymentZone = document.getElementById('creditPaymentZone');
     if (paymentZone) paymentZone.style.display = 'none';
 
@@ -2163,7 +2197,6 @@ function closeCreditSelection() {
     var deleteBtn = document.getElementById('deleteSelectedBtn');
     if (deleteBtn) deleteBtn.style.display = 'none';
 
-    // Rafraîchir le tableau
     if (typeof renderCreditsTablePro === 'function') {
         renderCreditsTablePro();
     } else if (typeof renderCreditsTable === 'function') {
@@ -2172,7 +2205,6 @@ function closeCreditSelection() {
 }
 window.closeCreditSelection = closeCreditSelection;
 
-// ✅ FONCTION AJOUTÉE : validateCreditPayment
 function validateCreditPayment() {
     var amountInput = document.getElementById('creditPaymentAmountInput');
     if (!amountInput) {
@@ -2186,13 +2218,11 @@ function validateCreditPayment() {
         return;
     }
 
-    // Vérifier qu'un crédit est sélectionné
     if (!window.creditSelectedIds || window.creditSelectedIds.length === 0) {
         alert('❌ Aucun crédit sélectionné');
         return;
     }
 
-    // Pour chaque crédit sélectionné, appliquer le paiement
     var promises = window.creditSelectedIds.map(function(id) {
         var credit = (window.allCreditsData || []).find(function(c) { return c.id === id; });
         if (!credit) return Promise.resolve();
@@ -2201,14 +2231,12 @@ function validateCreditPayment() {
         var newPaid = total - amount;
         var isFullyPaid = newPaid <= 0.01;
 
-        // Mettre à jour dans Firestore
         return db.collection('credits').doc(id).update({
             amountGiven: (credit.amountGiven || 0) + amount,
             remainingAmount: Math.max(0, newPaid),
             paid: isFullyPaid,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }).then(function() {
-            // Mettre à jour le cache
             var updatedCredit = {
                 ...credit,
                 amountGiven: (credit.amountGiven || 0) + amount,
@@ -2232,24 +2260,18 @@ function validateCreditPayment() {
 }
 window.validateCreditPayment = validateCreditPayment;
 
-// ✅ FONCTION POUR RETOURNER AU PAIEMENT DEPUIS LA PAGE CRÉDITS
 function retournerAuPaiement() {
-    // Réinitialiser les variables de filtre
     window._posFilterClientId = null;
     window._posFilterClientName = null;
     window._fromPos = false;
-    // Naviguer vers le POS
     navigateTo('pos');
 }
 window.retournerAuPaiement = retournerAuPaiement;
 
-// ✅ EXPOSER LES NOUVELLES FONCTIONS
 window.filterByPeriodWithDatesCredits = filterByPeriodWithDatesCredits;
 window.updateCreditsStats = updateCreditsStats;
 window.appliquerFiltreDatePersonnaliseCredits = appliquerFiltreDatePersonnaliseCredits;
 window.reinitialiserFiltresCredits = reinitialiserFiltresCredits;
-
-// ✅ EXPOSER LA FONCTION DE PAIEMENT CRÉDIT À 0
 window.confirmerPaiementCreditZero = confirmerPaiementCreditZero;
 
 // ==================== EXPOSITION DES FONCTIONS GLOBALES ====================
@@ -2286,42 +2308,36 @@ window.renderCreditFactureCell = renderCreditFactureCell;
 window.renderCreditDateCell = renderCreditDateCell;
 window.renderCreditClientCell = renderCreditClientCell;
 
-// ✅ AJOUT DES FONCTIONS MODAL FACTURE CRÉDIT
 window.openCreditFactureDetails = openCreditFactureDetails;
 window.closeCreditFactureDetails = closeCreditFactureDetails;
 window.loadCreditFactureDetails = loadCreditFactureDetails;
 window.renderCreditFactureDetails = renderCreditFactureDetails;
 window.printCreditFactureDetails = printCreditFactureDetails;
 
-// ✅ AJOUT DES FONCTIONS PAIEMENT CRÉDIT
 window.openCreditPaymentModal = openCreditPaymentModal;
 window.confirmCreditPayment = confirmCreditPayment;
 window.validateCreditPayment = validateCreditPayment;
 
-// ✅ AJOUT DE LA FONCTION WHATSAPP
 window.sendCreditWhatsApp = sendCreditWhatsApp;
 
-// ✅ ALIAS POUR COMPATIBILITÉ avec admin.js (qui appelle renderCreditsTable sans "Pro")
 window.renderCreditsTable = renderCreditsTablePro;
 
-// ✅ PAGINATION - NE PAS écraser les fonctions existantes (admin.js/script.js fonctionnent déjà)
 window.getPaginationHTML = window.getPaginationHTML || getPaginationHTML;
 window.changePage = window.changePage || changePage;
 window.getPageData = window.getPageData || getPageData;
 
 console.log('🚀 E-SOLUTION - Admin Credits PRO chargé');
-console.log('✅ Détails facture crédit modal ajouté - Font size agrandi');
-console.log('✅ Paiement crédit avec modal - Mise à jour du crédit existant');
-console.log('✅ Pagination corrigée - Utilise window.itemsPerPage');
+console.log('✅ Détails facture crédit modal ajouté');
+console.log('✅ Paiement crédit avec modal');
+console.log('✅ Pagination corrigée');
 console.log('✅ Caissier peut : Marquer payé, Modifier, Envoyer WhatsApp');
-console.log('✅ SEUL L\'ADMIN PEUT SUPPRIMER - Le caissier n\'a PAS le bouton Supprimer');
-console.log('✅ Boutons avec texte - Ultra compacts (10px)');
-console.log('✅ Retour au paiement depuis le POS (uniquement si venu du POS)');
+console.log('✅ SEUL L\'ADMIN PEUT SUPPRIMER');
+console.log('✅ Boutons avec texte - Ultra compacts');
+console.log('✅ Retour au paiement depuis le POS');
 console.log('✅ Pré-sélection du client avec recherche auto');
 console.log('✅ Statistiques en haut de page avec filtres de date');
-console.log('✅ Filtres rapides : Aujourd\'hui, 3j, 7j, 15j, 30j, 90j, 365j');
 console.log('✅ Paiement crédit : Le champ "Reste à payer" diminue correctement');
-console.log('✅ Synchronisation avec admin ventes : Quand un crédit est payé, la vente se met à jour');
-console.log('✅ Gestion des crédits à 0 MAD : Marqué comme payé automatiquement');
-console.log('✅ ALIAS renderCreditsTable = renderCreditsTablePro (compatibilité admin.js)');
-console.log('✅ changePage NON écrasée (garde la version d\'admin.js)');
+console.log('✅ Synchronisation avec admin ventes');
+console.log('✅ Gestion des crédits à 0 MAD');
+console.log('✅ FUSION CACHE + FIRESTORE : Crédits visibles en permanence, sans doublons');
+console.log('✅ TRI DESCENDANT PAR DATE : Les crédits les plus récents en premier (même hors-ligne)');
