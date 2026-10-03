@@ -8,6 +8,7 @@
 // ✅ SYNCHRONISATION AVEC ADMIN CREDITS : Quand un crédit est payé, la vente devient "Payé"
 // ✅ NOUVEAU CHAMP "RESTANT" DANS LES VENTES
 // ✅ ARTICLES ET OPTIONS VISIBLES POUR TOUT LE MONDE (ADMIN ET CAISSIER)
+// ✅ FUSION CACHE + FIRESTORE SANS DOUBLONS (mode hors-ligne)
 
 // ========== VARIABLES GLOBALES ==========
 window.commandesSearch = window.commandesSearch || '';
@@ -1518,37 +1519,173 @@ applyVentesFilters();
 return false;
 }
 
+// ==================== loadVentes - VERSION AVEC FUSION CACHE + FIRESTORE SANS DOUBLONS ====================
 async function loadVentes() {
-var isAdmin = window.currentUserData && window.currentUserData.userData.role === 'admin';
-var vendeurCaissier = '';
-if (!isAdmin && window.currentUserData) {
-vendeurCaissier = window.currentUserData.userData.prenom + ' ' + window.currentUserData.userData.nom;
-}
-try {
-const snapshot = await db.collection('ventes').orderBy('createdAt', 'desc').limit(2000).get();
-window.allVentesData = [];
-snapshot.forEach(dc => {
-var d = dc.data(); d.id = dc.id;
-var achat = 0, profit = 0;
-if (d.items) {
-d.items.forEach(function(it) {
-var pa = it.prixAchat || 0, pv = it.prixVente || 0, pp = it.prixPromo || 0,
-pvr = (pp > 0) ? pp : pv, q = it.quantite || 1;
-achat += pa * q;
-profit += (pvr - pa) * q;
-});
-}
-d.achat = achat; d.profit = profit;
-window.allVentesData.push(d);
-});
-if (!isAdmin) {
-window.allVentesData = window.allVentesData.filter(function(d) { return d.vendeur === vendeurCaissier; });
-}
-if (!window.sortOrders.ventes) window.sortOrders.ventes = {};
-if (!window.sortOrders.ventes.createdAt) { window.sortOrders.ventes.createdAt = 'desc'; }
-} catch (e) { console.error('Erreur chargement ventes:', e); }
-window.currentPages.ventes = 1;
-applyVentesFilters();
+    var isAdmin = window.currentUserData && window.currentUserData.userData.role === 'admin';
+    var vendeurCaissier = '';
+    if (!isAdmin && window.currentUserData) {
+        vendeurCaissier = window.currentUserData.userData.prenom + ' ' + window.currentUserData.userData.nom;
+    }
+
+    // ✅ 1. Charger depuis CacheDB d'abord (affichage instantané)
+    try {
+        const cached = await CacheDB.getAll('ventes');
+        if (cached && cached.length) {
+            window.allVentesData = cached.map(function(d) {
+                // Calculer achat/profit si nécessaire
+                var achat = 0, profit = 0;
+                if (d.items) {
+                    d.items.forEach(function(it) {
+                        var pa = it.prixAchat || 0;
+                        var pv = it.prixVente || 0;
+                        var pp = it.prixPromo || 0;
+                        var pvr = (pp > 0) ? pp : pv;
+                        var q = it.quantite || 1;
+                        achat += pa * q;
+                        profit += (pvr - pa) * q;
+                    });
+                }
+                d.achat = achat;
+                d.profit = profit;
+                return d;
+            });
+
+            if (!isAdmin) {
+                window.allVentesData = window.allVentesData.filter(function(d) {
+                    return d.vendeur === vendeurCaissier;
+                });
+            }
+
+            if (!window.sortOrders.ventes) window.sortOrders.ventes = {};
+            if (!window.sortOrders.ventes.createdAt) {
+                window.sortOrders.ventes.createdAt = 'desc';
+            }
+
+            // Affichage immédiat
+            window.currentPages.ventes = 1;
+            applyVentesFilters();
+            console.log('⚡ Ventes depuis CacheDB:', window.allVentesData.length);
+        }
+    } catch(e) {
+        console.warn('⚠️ Erreur lecture CacheDB ventes:', e);
+    }
+
+    // ✅ 2. Charger depuis Firestore (données fraîches) - seulement si en ligne
+    if (navigator.onLine) {
+        try {
+            const snapshot = await db.collection('ventes').orderBy('createdAt', 'desc').limit(2000).get();
+
+            // ✅ Construire un SET des IDs et factureNum déjà présents dans le cache
+            var existingIds = new Set();
+            var existingFactures = new Set();
+
+            // On garde les entrées locales (pas encore synchronisées) de côté
+            var localOnlyVentes = window.allVentesData.filter(function(v) {
+                return v._offline === true && v._synced !== true;
+            });
+
+            // Marquer les IDs/factures des ventes locales pour éviter les doublons
+            window.allVentesData.forEach(function(v) {
+                if (v.id) existingIds.add(v.id);
+                if (v.factureNum) existingFactures.add(v.factureNum);
+            });
+
+            var freshVentes = [];
+            snapshot.forEach(function(dc) {
+                var d = dc.data();
+                d.id = dc.id;
+
+                // ✅ Calculer achat/profit
+                var achat = 0, profit = 0;
+                if (d.items) {
+                    d.items.forEach(function(it) {
+                        var pa = it.prixAchat || 0;
+                        var pv = it.prixVente || 0;
+                        var pp = it.prixPromo || 0;
+                        var pvr = (pp > 0) ? pp : pv;
+                        var q = it.quantite || 1;
+                        achat += pa * q;
+                        profit += (pvr - pa) * q;
+                    });
+                }
+                d.achat = achat;
+                d.profit = profit;
+                d._synced = true;
+
+                freshVentes.push(d);
+            });
+
+            // ✅ Éliminer les doublons : si une vente Firestore a déjà été affichée
+            // en version locale (même factureNum), on garde la version Firestore
+            // et on retire la locale
+            var finalVentes = freshVentes.slice();
+
+            // Ajouter les ventes locales qui ne sont PAS dans Firestore
+            // (= ventes hors-ligne pas encore synchronisées)
+            localOnlyVentes.forEach(function(localVente) {
+                // Si la vente locale a le même factureNum qu'une vente Firestore,
+                // c'est qu'elle a été synchronisée → on la retire
+                if (localVente.factureNum && existingFactures.has(localVente.factureNum)) {
+                    // ✅ Vérifier si cette facture existe VRAIMENT dans les freshVentes
+                    var foundInFresh = freshVentes.some(function(fv) {
+                        return fv.factureNum === localVente.factureNum;
+                    });
+
+                    if (foundInFresh) {
+                        // Doublon : on supprime l'entrée locale du cache
+                        console.log('🗑️ Doublon détecté, suppression locale:', localVente.factureNum);
+                        if (typeof CacheDB !== 'undefined' && CacheDB.delete) {
+                            CacheDB.delete('ventes', localVente.id).catch(function() {});
+                        }
+                        return; // skip
+                    }
+                }
+
+                // Sinon, c'est une vente hors-ligne légitime → on la garde
+                finalVentes.push(localVente);
+            });
+
+            // Filtrer par vendeur si caissier
+            if (!isAdmin) {
+                finalVentes = finalVentes.filter(function(d) {
+                    return d.vendeur === vendeurCaissier;
+                });
+            }
+
+            // Mettre à jour le cache Firestore pour les prochains chargements
+            for (var i = 0; i < freshVentes.length; i++) {
+                var fv = freshVentes[i];
+                try {
+                    await CacheDB.set('ventes', fv.id, fv);
+                } catch(e) { /* ignore */ }
+            }
+
+            // ✅ Sauvegarder le cache (pour persistance)
+            if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
+                try {
+                    CacheDB.saveCollection('ventes');
+                } catch(e) { /* ignore */ }
+            }
+
+            window.allVentesData = finalVentes;
+
+            if (!window.sortOrders.ventes) window.sortOrders.ventes = {};
+            if (!window.sortOrders.ventes.createdAt) {
+                window.sortOrders.ventes.createdAt = 'desc';
+            }
+
+            console.log('🔥 Ventes depuis Firestore:', freshVentes.length, '| Locales non-sync:', finalVentes.length - freshVentes.length, '| Total:', finalVentes.length);
+
+        } catch(e) {
+            console.error('❌ Erreur chargement ventes Firestore:', e);
+        }
+    } else {
+        console.log('📴 Hors ligne - Affichage uniquement depuis CacheDB');
+    }
+
+    // ✅ 3. Réinitialiser la pagination et afficher
+    window.currentPages.ventes = 1;
+    applyVentesFilters();
 }
 
 function applyVentesFilters() {
@@ -2557,3 +2694,4 @@ console.log('✅ Nouveau champ "Restant" dans les ventes - Diminue avec le paiem
 console.log('✅ Champ "Donné" augmente avec le paiement');
 console.log('✅ Sélection en masse comme admin credits - Bouton "Sélectionner" pour activer/désactiver');
 console.log('✅ Articles et Options visibles pour tout le monde (admin ET caissier)');
+console.log('✅ FUSION CACHE + FIRESTORE SANS DOUBLONS (mode hors-ligne)');
