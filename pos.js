@@ -1,5 +1,6 @@
-// ==================== POS.JS - E-SOLUTION (COMPLET) ====================
+// ==================== POS.JS - E-SOLUTION (COMPLET + HORS-LIGNE) ====================
 // 🎨 Couleur : émeraude #00C896 (fidèle à l'image de référence)
+// 📴 MODE HORS-LIGNE ACTIVÉ : Les ventes sont sauvegardées en localStorage si pas de connexion
 
 var posCart = [];
 var posStep = 1;
@@ -1461,6 +1462,87 @@ try { return await forceUpdateClient(clientId, total, profitTotal); }
 catch(e) { console.error('❌ Erreur updateClientFidelityAsync:', e); return false; }
 }
 
+// ============================================================
+// 📴 FONCTION POUR SYNCHRONISER LES VENTES HORS-LIGNE
+// ============================================================
+async function posSyncVentesOffline() {
+    if (!navigator.onLine) return;
+
+    var ventes = [];
+    try {
+        ventes = JSON.parse(localStorage.getItem('posVentesOffline') || '[]');
+    } catch(e) { return; }
+    if (ventes.length === 0) return;
+
+    console.log('🔄 Sync de', ventes.length, 'vente(s) hors-ligne...');
+
+    var restantes = [];
+    for (var i = 0; i < ventes.length; i++) {
+        var v = ventes[i];
+        try {
+            var sd = {
+                factureNum: v.factureNum,
+                items: v.items,
+                subtotal: v.subtotal,
+                discountMAD: v.discountMAD,
+                total: v.total,
+                clientId: v.clientId,
+                clientName: v.clientName,
+                table: v.table,
+                vendeur: v.vendeur,
+                paymentMethod: v.paymentMethod,
+                statutPaiement: v.statutPaiement,
+                amountGiven: v.amountGiven,
+                change: v.change,
+                paid: v.paid,
+                remainingAmount: v.remainingAmount,
+                profitTotal: v.profitTotal,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                _offlineCreatedAt: v._offlineCreatedAt
+            };
+
+            var batch = db.batch();
+            var ventesRef = db.collection('ventes').doc();
+            batch.set(ventesRef, sd);
+
+            if (!v.paid) {
+                var creditsRef = db.collection('credits').doc();
+                batch.set(creditsRef, sd);
+            }
+
+            if (v.items) {
+                for (var j = 0; j < v.items.length; j++) {
+                    var it = v.items[j];
+                    batch.update(db.collection('products').doc(it.id), {
+                        stock: firebase.firestore.FieldValue.increment(-it.quantite),
+                        vendues: firebase.firestore.FieldValue.increment(it.quantite),
+                        ca: firebase.firestore.FieldValue.increment(it.prixVente * it.quantite)
+                    });
+                }
+            }
+
+            await batch.commit();
+
+            if (v.clientId && v.paid) {
+                try { await forceUpdateClient(v.clientId, v.total, v.profitTotal); } catch(e) {}
+            }
+
+            console.log('✅ Vente hors-ligne synchronisée:', v.factureNum);
+        } catch(e) {
+            console.warn('⚠️ Échec sync', v.factureNum, ':', e.message);
+            restantes.push(v);
+        }
+    }
+
+    try { localStorage.setItem('posVentesOffline', JSON.stringify(restantes)); } catch(e) {}
+    console.log('✅ Sync terminée. Restantes:', restantes.length);
+}
+
+window.posSyncVentesOffline = posSyncVentesOffline;
+
+// ============================================================
+// ✅ posFinalizeSale - AVEC SUPPORT HORS-LIGNE
+// ============================================================
 async function posFinalizeSale(){
 if(posCart.length === 0){ alert('❌ Le panier est vide. Ajoutez des articles avant de finaliser.'); return; }
 if(isFinalizing) return;
@@ -1479,6 +1561,7 @@ isFinalizing=true;
 var fb=document.querySelector('.pos-finalize-btn');
 if(fb){ fb.disabled=true; fb.textContent='⏳...'; }
 var vendeur=document.getElementById('posVendeur').value.trim()||(window.currentUserData?window.currentUserData.userData.prenom+' '+window.currentUserData.userData.nom:'');
+
 try{
 var fn=getNextFactureNum(), remaining=0, paid=true, statutPaiement='payé', change=0;
 if(posPaymentMethod==='credit'){ paid=false; remaining=t; statutPaiement='crédit'; }
@@ -1490,67 +1573,161 @@ var pa=it.prixAchat||0, pvn=it.prixVente||0, pp=it.prixPromo||0, pvr=pp>0?pp:pvn
 profitTotal+=prof;
 return {id:it.id, nom:it.nom, quantite:it.quantite, prixVente:pvr, prixAchat:pa, prixPromo:pp, profit:prof, sauces:[], interdits:it.interdits||[], epice:it.epice||'Normal', sel:it.sel||'Normal'};
 });
-var sd={factureNum:fn, items:itemsDetail, subtotal:st, discountMAD:posDiscountMAD, total:t, clientId:posCurrentClient ? posCurrentClient.id : null, clientName:posCurrentClient ? posCurrentClient.name : 'Passager', table:posCurrentTable || null, vendeur:vendeur, paymentMethod:posPaymentMethod, statutPaiement:statutPaiement, amountGiven:posAmountGiven, change:change, paid:paid, remainingAmount:remaining, profitTotal:profitTotal, createdAt:firebase.firestore.FieldValue.serverTimestamp()};
-var batch=db.batch(), ventesRef=db.collection('ventes').doc();
-batch.set(ventesRef,sd);
-if(!paid){ var creditsRef=db.collection('credits').doc(); batch.set(creditsRef,sd); }
-if(window.posCommandeId){ batch.update(db.collection('commandes').doc(window.posCommandeId), {statut:'payé', paidAt:firebase.firestore.FieldValue.serverTimestamp(), factureNum:fn}); delete window.posCommandeId; }
-if(window.posVenteId){ batch.update(db.collection('ventes').doc(window.posVenteId), {paid:true, statutPaiement:'payé', remainingAmount:0, paidAt:firebase.firestore.FieldValue.serverTimestamp()}); delete window.posVenteId; }
-for(var i=0;i<posCart.length;i++){ var it=posCart[i]; batch.update(db.collection('products').doc(it.id), {stock:firebase.firestore.FieldValue.increment(-it.quantite), vendues:firebase.firestore.FieldValue.increment(it.quantite), ca:firebase.firestore.FieldValue.increment(it.prixUnitaire*it.quantite)}); }
-await batch.commit();
 
-localStorage.removeItem('posSavedState');
+// ============================================================
+// 📴 DÉTECTION HORS-LIGNE (AVANT tout appel Firestore)
+// ============================================================
+var isOffline = !navigator.onLine;
+console.log('🎯 FINALIZE — isOffline:', isOffline, '| total:', t.toFixed(2));
 
-if(posCurrentClient && posCurrentClient.id && paid) {
-try { await forceUpdateClient(posCurrentClient.id, t, profitTotal); }
-catch(e) { console.warn('⚠️ Erreur mise à jour client:', e); }
-}
-
-if (posCurrentClient && posCurrentClient.id) { clientCreditsCache[posCurrentClient.id] = undefined; }
-var venteId = ventesRef.id;
-if (typeof window.sendWhatsApp === 'function') {
-var originalCloseModal = window.closeModal;
-window.closeModal = function() {
-posResetCart();
-posStep = 1;
-window.posStep = 1;
-if(isOnPOSPage()) renderPOS();
-if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
-window.closeModal = originalCloseModal;
-var o = document.getElementById('modalOverlay');
-if (o) o.classList.add('hidden');
-window.editingId = null;
+// ✅ Données pures (sans FieldValue) pour localStorage
+var venteDataForStorage = {
+    factureNum: fn,
+    items: itemsDetail,
+    subtotal: st,
+    discountMAD: posDiscountMAD,
+    total: t,
+    clientId: posCurrentClient ? posCurrentClient.id : null,
+    clientName: posCurrentClient ? posCurrentClient.name : 'Passager',
+    table: posCurrentTable || null,
+    vendeur: vendeur,
+    paymentMethod: posPaymentMethod,
+    statutPaiement: statutPaiement,
+    amountGiven: posAmountGiven,
+    change: change,
+    paid: paid,
+    remainingAmount: remaining,
+    profitTotal: profitTotal,
+    achat: itemsDetail.reduce(function(s, it) { return s + (it.prixAchat || 0) * (it.quantite || 1); }, 0),
+    createdAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 },
+    _offlineCreatedAt: new Date().toISOString()
 };
-var modalHtml = '<p style="text-align:center;">Voulez-vous envoyer la facture par WhatsApp ?</p><div style="display:flex;justify-content:center;gap:10px;margin-top:15px;"><button class="btn-save" id="whatsappYesBtn">✅ Oui</button><button class="btn-cancel" id="whatsappNoBtn">❌ Non</button></div>';
-openModal('📱 Envoyer la facture WhatsApp', modalHtml);
-setTimeout(function() {
-var yesBtn = document.getElementById('whatsappYesBtn'), noBtn = document.getElementById('whatsappNoBtn');
-if (yesBtn) { yesBtn.addEventListener('click', function() {
-window.closeModal = originalCloseModal;
-closeModal();
-if (typeof window.posStopVoiceSearch === 'function') window.posStopVoiceSearch();
-window.sendWhatsApp(venteId);
-setTimeout(function() { posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS(); if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500); }, 500);
-}); }
-if (noBtn) { noBtn.addEventListener('click', function() {
-window.closeModal = originalCloseModal;
-closeModal();
-posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS();
-if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
-}); }
-}, 100);
-} else {
-posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS();
-if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
-}
 
-if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
-setTimeout(function() {
-CacheDB.saveCollection('ventes');
-CacheDB.saveCollection('products');
-CacheDB.saveCollection('clients');
-CacheDB.saveCollection('credits');
-}, 500);
+if (isOffline) {
+    // ================= MODE HORS-LIGNE PUR =================
+    console.log('📴 MODE HORS-LIGNE — enregistrement localStorage');
+
+    var venteOfflineId = 'offline_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    var venteOffline = Object.assign({}, venteDataForStorage, {
+        id: venteOfflineId,
+        _isOffline: true
+    });
+
+    try {
+        var ventesLS = JSON.parse(localStorage.getItem('posVentesOffline') || '[]');
+        ventesLS.push(venteOffline);
+        localStorage.setItem('posVentesOffline', JSON.stringify(ventesLS));
+        console.log('✅ Vente hors-ligne sauvegardée :', venteOfflineId);
+    } catch(e) {
+        console.error('❌ Erreur localStorage:', e);
+    }
+
+    // Mise à jour stock local (mémoire)
+    for (var ii = 0; ii < posCart.length; ii++) {
+        var itemLocal = posCart[ii];
+        var prodLocal = posProductsList.find(function(p) { return p.id === itemLocal.id; });
+        if (prodLocal) {
+            if (prodLocal.stock !== undefined) prodLocal.stock = Math.max(0, prodLocal.stock - itemLocal.quantite);
+            prodLocal.vendues = (prodLocal.vendues || 0) + itemLocal.quantite;
+            prodLocal.ca = (prodLocal.ca || 0) + (itemLocal.prixUnitaire * itemLocal.quantite);
+        }
+    }
+
+    // Mise à jour client local (mémoire)
+    if (posCurrentClient && posCurrentClient.id && paid) {
+        var clientLocal = posAllClients.find(function(c) { return c.id === posCurrentClient.id; });
+        if (clientLocal) {
+            clientLocal.ca = (clientLocal.ca || 0) + t;
+            clientLocal.profit = (clientLocal.profit || 0) + profitTotal;
+        }
+    }
+
+    // Notification visuelle
+    var notif = document.createElement('div');
+    notif.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;padding:14px 18px;background:#FEF3C7;border:2px solid #F59E0B;border-radius:12px;color:#92400E;font-family:sans-serif;font-size:0.95rem;box-shadow:0 8px 24px rgba(0,0,0,0.15);max-width:340px;';
+    notif.innerHTML = '<strong>📴 Vente enregistrée hors-ligne</strong><br><span style="font-size:0.85rem;">Facture #' + fn + ' — ' + t.toFixed(2) + ' MAD</span>';
+    document.body.appendChild(notif);
+    setTimeout(function() {
+        notif.style.opacity = '0';
+        notif.style.transition = 'opacity 0.3s';
+        setTimeout(function() { notif.remove(); }, 300);
+    }, 4000);
+
+    localStorage.removeItem('posSavedState');
+    posResetCart();
+    posStep = 1;
+    window.posStep = 1;
+    if(isOnPOSPage()) renderPOS();
+
+} else {
+    // ================= MODE EN LIGNE (code original) =================
+    var sd = Object.assign({}, venteDataForStorage, {
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    delete sd._offlineCreatedAt;
+    delete sd.achat;
+
+    var batch=db.batch(), ventesRef=db.collection('ventes').doc();
+    batch.set(ventesRef,sd);
+    if(!paid){ var creditsRef=db.collection('credits').doc(); batch.set(creditsRef,sd); }
+    if(window.posCommandeId){ batch.update(db.collection('commandes').doc(window.posCommandeId), {statut:'payé', paidAt:firebase.firestore.FieldValue.serverTimestamp(), factureNum:fn}); delete window.posCommandeId; }
+    if(window.posVenteId){ batch.update(db.collection('ventes').doc(window.posVenteId), {paid:true, statutPaiement:'payé', remainingAmount:0, paidAt:firebase.firestore.FieldValue.serverTimestamp()}); delete window.posVenteId; }
+    for(var i=0;i<posCart.length;i++){ var it=posCart[i]; batch.update(db.collection('products').doc(it.id), {stock:firebase.firestore.FieldValue.increment(-it.quantite), vendues:firebase.firestore.FieldValue.increment(it.quantite), ca:firebase.firestore.FieldValue.increment(it.prixUnitaire*it.quantite)}); }
+    await batch.commit();
+
+    localStorage.removeItem('posSavedState');
+
+    if(posCurrentClient && posCurrentClient.id && paid) {
+    try { await forceUpdateClient(posCurrentClient.id, t, profitTotal); }
+    catch(e) { console.warn('⚠️ Erreur mise à jour client:', e); }
+    }
+
+    if (posCurrentClient && posCurrentClient.id) { clientCreditsCache[posCurrentClient.id] = undefined; }
+    var venteId = ventesRef.id;
+    if (typeof window.sendWhatsApp === 'function') {
+    var originalCloseModal = window.closeModal;
+    window.closeModal = function() {
+    posResetCart();
+    posStep = 1;
+    window.posStep = 1;
+    if(isOnPOSPage()) renderPOS();
+    if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
+    window.closeModal = originalCloseModal;
+    var o = document.getElementById('modalOverlay');
+    if (o) o.classList.add('hidden');
+    window.editingId = null;
+    };
+    var modalHtml = '<p style="text-align:center;">Voulez-vous envoyer la facture par WhatsApp ?</p><div style="display:flex;justify-content:center;gap:10px;margin-top:15px;"><button class="btn-save" id="whatsappYesBtn">✅ Oui</button><button class="btn-cancel" id="whatsappNoBtn">❌ Non</button></div>';
+    openModal('📱 Envoyer la facture WhatsApp', modalHtml);
+    setTimeout(function() {
+    var yesBtn = document.getElementById('whatsappYesBtn'), noBtn = document.getElementById('whatsappNoBtn');
+    if (yesBtn) { yesBtn.addEventListener('click', function() {
+    window.closeModal = originalCloseModal;
+    closeModal();
+    if (typeof window.posStopVoiceSearch === 'function') window.posStopVoiceSearch();
+    window.sendWhatsApp(venteId);
+    setTimeout(function() { posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS(); if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500); }, 500);
+    }); }
+    if (noBtn) { noBtn.addEventListener('click', function() {
+    window.closeModal = originalCloseModal;
+    closeModal();
+    posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS();
+    if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
+    }); }
+    }, 100);
+    } else {
+    posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS();
+    if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
+    }
+
+    if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
+    setTimeout(function() {
+    CacheDB.saveCollection('ventes');
+    CacheDB.saveCollection('products');
+    CacheDB.saveCollection('clients');
+    CacheDB.saveCollection('credits');
+    }, 500);
+    }
 }
 
 }catch(e){ alert('Erreur: '+e.message); }
@@ -1748,6 +1925,22 @@ window.buildFullPOS = function(c) { ancienBuildFullPOS(c); setTimeout(corrigerDi
 window.addEventListener('load', corrigerDispositionMobile);
 window.addEventListener('resize', corrigerDispositionMobile);
 
+// ============================================================
+// 📴 ÉCOUTEURS HORS-LIGNE — Synchronisation automatique
+// ============================================================
+if (!window._posSyncOfflineAttached) {
+    window._posSyncOfflineAttached = true;
+    window.addEventListener('online', function() {
+        console.log('🌐 Connexion rétablie — sync des ventes hors-ligne...');
+        setTimeout(posSyncVentesOffline, 1000);
+    });
+    setInterval(function() {
+        if (navigator.onLine) posSyncVentesOffline();
+    }, 30000);
+    setTimeout(function() { if (navigator.onLine) posSyncVentesOffline(); }, 3000);
+    console.log('📴 Module hors-ligne activé');
+}
+
 window.posCart=posCart; window.posStep=posStep; window.posProductsList=posProductsList; window.posAllClients=posAllClients; window.posCurrentClient=posCurrentClient; window.posCurrentTable=posCurrentTable; window.posDiscountMAD=posDiscountMAD; window.posAmountGiven=posAmountGiven; window.posPaymentMethod=posPaymentMethod; window.posResetCart=posResetCart; window.posAddToCartOrOpenOptions=posAddToCartOrOpenOptions; window.posSetPaymentMethod=posSetPaymentMethod; window.posCalculateTotal=posCalculateTotal; window.posFinalizeSale=posFinalizeSale; window.posGoToStep2=posGoToStep2; window.posGoToStep1=posGoToStep1; window.posSearchProducts=posSearchProducts; window.clearPosSearch=clearPosSearch; window.clearClientSearch=clearClientSearch; window.updateClearButtonVisibility=updateClearButtonVisibility; window.updateCartOnly=updateCartOnly; window.renderPOS=renderPOS; window.updatePaymentButtons=updatePaymentButtons; window.loadMoreProducts=loadMoreProducts; window.loadClientCredits=loadClientCredits; window.updateClientCreditDisplay=updateClientCreditDisplay; window.posCalculateChange=posCalculateChange; window.onProductAdded=window.onProductAdded||function(pid){ console.log('Produit ajouté:',pid); };
 window.posNaviguerEtape = posNaviguerEtape;
 window.buildFullPOS = buildFullPOS;
@@ -1780,6 +1973,7 @@ window.posRestaurerDonneesPanier = posRestaurerDonneesPanier;
 window.posChargerToutesDonneesPaniers = posChargerToutesDonneesPaniers;
 window.posAjouterNouveauClient = posAjouterNouveauClient;
 window.posConfirmerAjoutClient = posConfirmerAjoutClient;
+window.posSyncVentesOffline = posSyncVentesOffline;
 
 console.log('🚀 E-SOLUTION - POS chargé');
 console.log('🎨 Design émeraude #00C896 appliqué');
@@ -1791,3 +1985,4 @@ console.log('✅ Icônes folder avec gradient émeraude');
 console.log('✅ Multi-paniers activé - ' + Object.keys(posMultiCarts).length + ' panier(s)');
 console.log('✅ LIMITE À ' + MAX_PANIERS + ' PANIERS MAXIMUM');
 console.log('⚡ OPTIMISATIONS : cache + content-visibility + batch 30 + debounce 80ms');
+console.log('📴 MODE HORS-LIGNE ACTIVÉ : Les ventes sont sauvegardées en localStorage si pas de connexion');
