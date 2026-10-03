@@ -1,6 +1,9 @@
 // ==================== POS.JS - E-SOLUTION (COMPLET + HORS-LIGNE) ====================
 // 🎨 Couleur : émeraude #00C896 (fidèle à l'image de référence)
-// 📴 MODE HORS-LIGNE ACTIVÉ : Les ventes sont sauvegardées en localStorage si pas de connexion
+// 📴 MODE HORS-LIGNE ACTIVÉ : Les ventes sont sauvegardées dans CacheDB + localStorage
+// ✅ CacheDB (IndexedDB) = base PRINCIPALE (comme produits/catégories/clients)
+// ✅ Firestore = sync quand en ligne
+// ✅ localStorage posVentesOffline = file d'attente de sync
 
 var posCart = [];
 var posStep = 1;
@@ -1523,6 +1526,14 @@ async function posSyncVentesOffline() {
 
             await batch.commit();
 
+            // ✅ Marquer dans CacheDB comme sync
+            if (v.id) {
+                v._syncedToFirestore = true;
+                v.id = ventesRef.id;
+                await CacheDB.set('ventes', ventesRef.id, v);
+                if (!v.paid) await CacheDB.set('credits', ventesRef.id, v);
+            }
+
             if (v.clientId && v.paid) {
                 try { await forceUpdateClient(v.clientId, v.total, v.profitTotal); } catch(e) {}
             }
@@ -1541,7 +1552,7 @@ async function posSyncVentesOffline() {
 window.posSyncVentesOffline = posSyncVentesOffline;
 
 // ============================================================
-// ✅ posFinalizeSale - AVEC SUPPORT HORS-LIGNE
+// ✅ posFinalizeSale - AVEC CACHEDB + FIRESTORE + LOCALSTORAGE
 // ============================================================
 async function posFinalizeSale(){
 if(posCart.length === 0){ alert('❌ Le panier est vide. Ajoutez des articles avant de finaliser.'); return; }
@@ -1575,13 +1586,17 @@ return {id:it.id, nom:it.nom, quantite:it.quantite, prixVente:pvr, prixAchat:pa,
 });
 
 // ============================================================
-// 📴 DÉTECTION HORS-LIGNE (AVANT tout appel Firestore)
+// 📴 DÉTECTION HORS-LIGNE — SAUVEGARDE UNIVERSELLE (CacheDB)
 // ============================================================
 var isOffline = !navigator.onLine;
 console.log('🎯 FINALIZE — isOffline:', isOffline, '| total:', t.toFixed(2));
 
-// ✅ Données pures (sans FieldValue) pour localStorage
-var venteDataForStorage = {
+// ✅ ID de la vente (sera utilisé partout)
+var venteId = 'vente_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+
+// ✅ Données à sauvegarder (dans TOUS les cas)
+var venteData = {
+    id: venteId,
     factureNum: fn,
     items: itemsDetail,
     subtotal: st,
@@ -1600,24 +1615,36 @@ var venteDataForStorage = {
     profitTotal: profitTotal,
     achat: itemsDetail.reduce(function(s, it) { return s + (it.prixAchat || 0) * (it.quantite || 1); }, 0),
     createdAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 },
-    _offlineCreatedAt: new Date().toISOString()
+    _isOffline: isOffline,
+    _syncedToFirestore: false
 };
 
+// ✅ 1) TOUJOURS sauvegarder dans CacheDB (IndexedDB)
+try {
+    await CacheDB.set('ventes', venteId, venteData);
+    console.log('💾 Vente sauvée dans CacheDB:', venteId);
+} catch(e) {
+    console.warn('⚠️ Erreur CacheDB.set ventes:', e);
+}
+
+// ✅ 2) Si crédit → aussi dans CacheDB credits
+if (!paid) {
+    try {
+        await CacheDB.set('credits', venteId, venteData);
+        console.log('💾 Crédit sauvé dans CacheDB:', venteId);
+    } catch(e) {
+        console.warn('⚠️ Erreur CacheDB.set credits:', e);
+    }
+}
+
+// ✅ 3) Si HORS-LIGNE → aussi dans localStorage (pour sync auto)
 if (isOffline) {
-    // ================= MODE HORS-LIGNE PUR =================
-    console.log('📴 MODE HORS-LIGNE — enregistrement localStorage');
-
-    var venteOfflineId = 'offline_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-    var venteOffline = Object.assign({}, venteDataForStorage, {
-        id: venteOfflineId,
-        _isOffline: true
-    });
-
+    console.log('📴 MODE HORS-LIGNE — sauvegarde localStorage aussi');
     try {
         var ventesLS = JSON.parse(localStorage.getItem('posVentesOffline') || '[]');
-        ventesLS.push(venteOffline);
+        ventesLS.push(venteData);
         localStorage.setItem('posVentesOffline', JSON.stringify(ventesLS));
-        console.log('✅ Vente hors-ligne sauvegardée :', venteOfflineId);
+        console.log('✅ Vente dans localStorage:', venteId);
     } catch(e) {
         console.error('❌ Erreur localStorage:', e);
     }
@@ -1632,8 +1659,6 @@ if (isOffline) {
             prodLocal.ca = (prodLocal.ca || 0) + (itemLocal.prixUnitaire * itemLocal.quantite);
         }
     }
-
-    // Mise à jour client local (mémoire)
     if (posCurrentClient && posCurrentClient.id && paid) {
         var clientLocal = posAllClients.find(function(c) { return c.id === posCurrentClient.id; });
         if (clientLocal) {
@@ -1642,93 +1667,89 @@ if (isOffline) {
         }
     }
 
-    // Notification visuelle
+    // Notification
     var notif = document.createElement('div');
     notif.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;padding:14px 18px;background:#FEF3C7;border:2px solid #F59E0B;border-radius:12px;color:#92400E;font-family:sans-serif;font-size:0.95rem;box-shadow:0 8px 24px rgba(0,0,0,0.15);max-width:340px;';
     notif.innerHTML = '<strong>📴 Vente enregistrée hors-ligne</strong><br><span style="font-size:0.85rem;">Facture #' + fn + ' — ' + t.toFixed(2) + ' MAD</span>';
     document.body.appendChild(notif);
     setTimeout(function() {
-        notif.style.opacity = '0';
-        notif.style.transition = 'opacity 0.3s';
+        notif.style.opacity = '0'; notif.style.transition = 'opacity 0.3s';
         setTimeout(function() { notif.remove(); }, 300);
     }, 4000);
 
-    localStorage.removeItem('posSavedState');
-    posResetCart();
-    posStep = 1;
-    window.posStep = 1;
-    if(isOnPOSPage()) renderPOS();
-
 } else {
-    // ================= MODE EN LIGNE (code original) =================
-    var sd = Object.assign({}, venteDataForStorage, {
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    delete sd._offlineCreatedAt;
-    delete sd.achat;
+    // ✅ EN LIGNE → écrire dans Firestore
+    try {
+        var sd = Object.assign({}, venteData);
+        delete sd.id;
+        delete sd._isOffline;
+        delete sd._syncedToFirestore;
+        delete sd.achat;
+        sd.createdAt = firebase.firestore.FieldValue.serverTimestamp();
 
-    var batch=db.batch(), ventesRef=db.collection('ventes').doc();
-    batch.set(ventesRef,sd);
-    if(!paid){ var creditsRef=db.collection('credits').doc(); batch.set(creditsRef,sd); }
-    if(window.posCommandeId){ batch.update(db.collection('commandes').doc(window.posCommandeId), {statut:'payé', paidAt:firebase.firestore.FieldValue.serverTimestamp(), factureNum:fn}); delete window.posCommandeId; }
-    if(window.posVenteId){ batch.update(db.collection('ventes').doc(window.posVenteId), {paid:true, statutPaiement:'payé', remainingAmount:0, paidAt:firebase.firestore.FieldValue.serverTimestamp()}); delete window.posVenteId; }
-    for(var i=0;i<posCart.length;i++){ var it=posCart[i]; batch.update(db.collection('products').doc(it.id), {stock:firebase.firestore.FieldValue.increment(-it.quantite), vendues:firebase.firestore.FieldValue.increment(it.quantite), ca:firebase.firestore.FieldValue.increment(it.prixUnitaire*it.quantite)}); }
-    await batch.commit();
+        var batch = db.batch();
+        var ventesRef = db.collection('ventes').doc(venteId);
+        batch.set(ventesRef, sd);
 
-    localStorage.removeItem('posSavedState');
+        if (!paid) {
+            var creditsRef = db.collection('credits').doc(venteId);
+            batch.set(creditsRef, sd);
+        }
+        if (window.posCommandeId) { batch.update(db.collection('commandes').doc(window.posCommandeId), { statut: 'payé', paidAt: firebase.firestore.FieldValue.serverTimestamp(), factureNum: fn }); delete window.posCommandeId; }
+        if (window.posVenteId) { batch.update(db.collection('ventes').doc(window.posVenteId), { paid: true, statutPaiement: 'payé', remainingAmount: 0, paidAt: firebase.firestore.FieldValue.serverTimestamp() }); delete window.posVenteId; }
+        for (var i = 0; i < posCart.length; i++) { var it = posCart[i]; batch.update(db.collection('products').doc(it.id), { stock: firebase.firestore.FieldValue.increment(-it.quantite), vendues: firebase.firestore.FieldValue.increment(it.quantite), ca: firebase.firestore.FieldValue.increment(it.prixUnitaire * it.quantite) }); }
+        await batch.commit();
+        console.log('✅ Vente sauvée dans Firestore:', venteId);
 
-    if(posCurrentClient && posCurrentClient.id && paid) {
-    try { await forceUpdateClient(posCurrentClient.id, t, profitTotal); }
-    catch(e) { console.warn('⚠️ Erreur mise à jour client:', e); }
+        // Mettre à jour CacheDB avec _syncedToFirestore: true
+        venteData._syncedToFirestore = true;
+        await CacheDB.set('ventes', venteId, venteData);
+        if (!paid) await CacheDB.set('credits', venteId, venteData);
+
+        if (posCurrentClient && posCurrentClient.id && paid) {
+            try { await forceUpdateClient(posCurrentClient.id, t, profitTotal); } catch(e) {}
+        }
+    } catch(e) {
+        console.warn('⚠️ Erreur Firestore, vente sauvée uniquement en local:', e);
     }
+}
 
-    if (posCurrentClient && posCurrentClient.id) { clientCreditsCache[posCurrentClient.id] = undefined; }
-    var venteId = ventesRef.id;
-    if (typeof window.sendWhatsApp === 'function') {
+localStorage.removeItem('posSavedState');
+if (posCurrentClient && posCurrentClient.id) { clientCreditsCache[posCurrentClient.id] = undefined; }
+
+// Message WhatsApp (seulement si en ligne)
+if (!isOffline && typeof window.sendWhatsApp === 'function') {
     var originalCloseModal = window.closeModal;
     window.closeModal = function() {
-    posResetCart();
-    posStep = 1;
-    window.posStep = 1;
-    if(isOnPOSPage()) renderPOS();
-    if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
-    window.closeModal = originalCloseModal;
-    var o = document.getElementById('modalOverlay');
-    if (o) o.classList.add('hidden');
-    window.editingId = null;
+        posResetCart(); posStep = 1; window.posStep = 1;
+        if(isOnPOSPage()) renderPOS();
+        if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
+        window.closeModal = originalCloseModal;
+        var o = document.getElementById('modalOverlay');
+        if (o) o.classList.add('hidden');
+        window.editingId = null;
     };
     var modalHtml = '<p style="text-align:center;">Voulez-vous envoyer la facture par WhatsApp ?</p><div style="display:flex;justify-content:center;gap:10px;margin-top:15px;"><button class="btn-save" id="whatsappYesBtn">✅ Oui</button><button class="btn-cancel" id="whatsappNoBtn">❌ Non</button></div>';
     openModal('📱 Envoyer la facture WhatsApp', modalHtml);
     setTimeout(function() {
-    var yesBtn = document.getElementById('whatsappYesBtn'), noBtn = document.getElementById('whatsappNoBtn');
-    if (yesBtn) { yesBtn.addEventListener('click', function() {
-    window.closeModal = originalCloseModal;
-    closeModal();
-    if (typeof window.posStopVoiceSearch === 'function') window.posStopVoiceSearch();
-    window.sendWhatsApp(venteId);
-    setTimeout(function() { posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS(); if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500); }, 500);
-    }); }
-    if (noBtn) { noBtn.addEventListener('click', function() {
-    window.closeModal = originalCloseModal;
-    closeModal();
-    posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS();
-    if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
-    }); }
+        var yesBtn = document.getElementById('whatsappYesBtn'), noBtn = document.getElementById('whatsappNoBtn');
+        if (yesBtn) { yesBtn.addEventListener('click', function() {
+            window.closeModal = originalCloseModal; closeModal();
+            if (typeof window.posStopVoiceSearch === 'function') window.posStopVoiceSearch();
+            window.sendWhatsApp(venteId);
+            setTimeout(function() { posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS(); }, 500);
+        }); }
+        if (noBtn) { noBtn.addEventListener('click', function() {
+            window.closeModal = originalCloseModal; closeModal();
+            posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS();
+        }); }
     }, 100);
-    } else {
-    posResetCart(); posStep = 1; window.posStep = 1; if(isOnPOSPage()) renderPOS();
-    if(navigator.onLine) setTimeout(function(){ CacheDB.sync().catch(function(){}); },500);
-    }
-
-    if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
-    setTimeout(function() {
-    CacheDB.saveCollection('ventes');
-    CacheDB.saveCollection('products');
-    CacheDB.saveCollection('clients');
-    CacheDB.saveCollection('credits');
-    }, 500);
-    }
+} else {
+    posResetCart(); posStep = 1; window.posStep = 1;
+    if(isOnPOSPage()) renderPOS();
 }
+
+if (typeof window.updateOfflineIndicator === 'function') window.updateOfflineIndicator();
 
 }catch(e){ alert('Erreur: '+e.message); }
 finally { isFinalizing=false; if(fb){ fb.disabled=false; fb.innerHTML='<i class="fas fa-check-circle"></i> Finaliser'; } }
@@ -1985,4 +2006,4 @@ console.log('✅ Icônes folder avec gradient émeraude');
 console.log('✅ Multi-paniers activé - ' + Object.keys(posMultiCarts).length + ' panier(s)');
 console.log('✅ LIMITE À ' + MAX_PANIERS + ' PANIERS MAXIMUM');
 console.log('⚡ OPTIMISATIONS : cache + content-visibility + batch 30 + debounce 80ms');
-console.log('📴 MODE HORS-LIGNE ACTIVÉ : Les ventes sont sauvegardées en localStorage si pas de connexion');
+console.log('📴 MODE HORS-LIGNE ACTIVÉ : CacheDB + Firestore + localStorage');
