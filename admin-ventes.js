@@ -185,6 +185,11 @@ if (batchCount > 0) {
 await batch.commit();
 }
 
+// ✅ Supprimer aussi du cache
+for (var k = 0; k < ids.length; k++) {
+try { CacheDB.delete('ventes', ids[k]); } catch(e) { }
+}
+
 ventesSelectionnees.clear();
 alert(`✅ ${totalDeleted} vente(s) supprimée(s) !`);
 loadVentes();
@@ -1529,14 +1534,12 @@ async function loadVentes() {
             // ✅ Déduplication par factureNum
             var vues = {};
             var uniques = [];
-            // Prioriser les entrées avec _firestoreId (synced) puis par date
             localVentes.sort(function(a, b) {
                 var sa = (a._firestoreId ? 10 : 0) + (a._synced ? 5 : 0);
                 var sb = (b._firestoreId ? 10 : 0) + (b._synced ? 5 : 0);
                 if (sa !== sb) return sb - sa;
                 return (b.createdAt?.seconds || b._createdAt || 0) - (a.createdAt?.seconds || a._createdAt || 0);
             });
-
             localVentes.forEach(function(v) {
                 var key = v.factureNum || v.id;
                 if (vues[key]) return;
@@ -1681,11 +1684,9 @@ async function synchroVenteDepuisCredit(creditData) {
             updatedAt: new Date()
         };
 
-        // ✅ Mettre à jour dans CacheDB (PAS dans Firestore)
         var updatedVente = Object.assign({}, vente, updateData);
         await CacheDB.set('ventes', vente.id, updatedVente);
 
-        // ✅ Mettre à jour dans allVentesData
         var index = window.allVentesData.findIndex(function(v) {
             return v.id === vente.id;
         });
@@ -1940,7 +1941,6 @@ remainingAmount: paid ? 0 : remaining,
 paid: paid,
 updatedAt: new Date()
 };
-// ✅ Mettre à jour uniquement dans le CacheDB
 CacheDB.get('ventes', window.editingId).then(function(existing) {
 if (existing) {
 var updated = Object.assign({}, existing, data);
