@@ -1464,6 +1464,7 @@ catch(e) { console.error('❌ Erreur updateClientFidelityAsync:', e); return fal
 
 // ============================================================
 // 📴 FONCTION POUR SYNCHRONISER LES VENTES HORS-LIGNE
+// ✅ ANTI-DOUBLONS : vérifie si la vente existe déjà dans Firestore
 // ============================================================
 async function posSyncVentesOffline() {
     if (!navigator.onLine) return;
@@ -1477,9 +1478,38 @@ async function posSyncVentesOffline() {
     console.log('🔄 Sync de', ventes.length, 'vente(s) hors-ligne...');
 
     var restantes = [];
+    var syncedCount = 0;
+    var skippedCount = 0;
+
     for (var i = 0; i < ventes.length; i++) {
         var v = ventes[i];
         try {
+            // ✅ VÉRIFIER SI LA VENTE EXISTE DÉJÀ DANS FIRESTORE (anti-doublon)
+            var existe = false;
+            if (v.factureNum) {
+                var checkSnap = await db.collection('ventes')
+                    .where('factureNum', '==', v.factureNum)
+                    .limit(1)
+                    .get();
+                existe = !checkSnap.empty;
+            }
+
+            if (existe) {
+                console.log('⚠️ Vente déjà présente dans Firestore (ignorée):', v.factureNum);
+                skippedCount++;
+                continue; // On ne la remet PAS dans restantes → elle sera supprimée du localStorage
+            }
+
+            // ✅ VÉRIFIER SI LE CRÉDIT EXISTE DÉJÀ (anti-doublon)
+            var creditExiste = false;
+            if (!v.paid && v.factureNum) {
+                var creditSnap = await db.collection('credits')
+                    .where('factureNum', '==', v.factureNum)
+                    .limit(1)
+                    .get();
+                creditExiste = !creditSnap.empty;
+            }
+
             var sd = {
                 factureNum: v.factureNum,
                 items: v.items,
@@ -1498,14 +1528,16 @@ async function posSyncVentesOffline() {
                 remainingAmount: v.remainingAmount,
                 profitTotal: v.profitTotal,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                _offlineCreatedAt: v._offlineCreatedAt
+                _offlineCreatedAt: v._offlineCreatedAt,
+                _syncedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
 
             var batch = db.batch();
             var ventesRef = db.collection('ventes').doc();
             batch.set(ventesRef, sd);
 
-            if (!v.paid) {
+            // ✅ Créer le crédit SEULEMENT s'il n'existe pas déjà
+            if (!v.paid && !creditExiste) {
                 var creditsRef = db.collection('credits').doc();
                 batch.set(creditsRef, sd);
             }
@@ -1528,14 +1560,35 @@ async function posSyncVentesOffline() {
             }
 
             console.log('✅ Vente hors-ligne synchronisée:', v.factureNum);
+            syncedCount++;
         } catch(e) {
             console.warn('⚠️ Échec sync', v.factureNum, ':', e.message);
             restantes.push(v);
         }
     }
 
+    // ✅ Sauvegarder uniquement celles qui ont échoué
     try { localStorage.setItem('posVentesOffline', JSON.stringify(restantes)); } catch(e) {}
-    console.log('✅ Sync terminée. Restantes:', restantes.length);
+    
+    console.log('✅ Sync terminée.');
+    console.log('   → Synchronisées:', syncedCount);
+    console.log('   → Ignorées (déjà présentes):', skippedCount);
+    console.log('   → Restantes (échec):', restantes.length);
+
+    // ✅ Mettre à jour l'indicateur visuel
+    if (typeof window.updateOfflineIndicator === 'function') {
+        window.updateOfflineIndicator();
+    }
+
+    // ✅ Rafraîchir les pages si elles sont ouvertes
+    if (typeof window.loadVentes === 'function' && document.getElementById('ventesTableContainer')) {
+        console.log('🔄 Rafraîchissement de la page Ventes...');
+        window.loadVentes();
+    }
+    if (typeof window.loadCredits === 'function' && document.getElementById('creditsTableContainer')) {
+        console.log('🔄 Rafraîchissement de la page Crédits...');
+        window.loadCredits();
+    }
 }
 
 window.posSyncVentesOffline = posSyncVentesOffline;
@@ -1652,6 +1705,11 @@ if (isOffline) {
         notif.style.transition = 'opacity 0.3s';
         setTimeout(function() { notif.remove(); }, 300);
     }, 4000);
+
+    // ✅ Mettre à jour l'indicateur visuel
+    if (typeof window.updateOfflineIndicator === 'function') {
+        window.updateOfflineIndicator();
+    }
 
     localStorage.removeItem('posSavedState');
     posResetCart();
@@ -1932,7 +1990,7 @@ if (!window._posSyncOfflineAttached) {
     window._posSyncOfflineAttached = true;
     window.addEventListener('online', function() {
         console.log('🌐 Connexion rétablie — sync des ventes hors-ligne...');
-        setTimeout(posSyncVentesOffline, 1000);
+        setTimeout(posSyncVentesOffline, 1500);
     });
     setInterval(function() {
         if (navigator.onLine) posSyncVentesOffline();
@@ -1986,3 +2044,4 @@ console.log('✅ Multi-paniers activé - ' + Object.keys(posMultiCarts).length +
 console.log('✅ LIMITE À ' + MAX_PANIERS + ' PANIERS MAXIMUM');
 console.log('⚡ OPTIMISATIONS : cache + content-visibility + batch 30 + debounce 80ms');
 console.log('📴 MODE HORS-LIGNE ACTIVÉ : Les ventes sont sauvegardées en localStorage si pas de connexion');
+console.log('🛡️ ANTI-DOUBLONS : Vérification avant sync (factureNum unique)');
