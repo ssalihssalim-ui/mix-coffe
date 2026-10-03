@@ -1,4 +1,4 @@
-// ==================== ADMIN.JS - E-SOLUTION POS (COMPLET CORRIGÉ) ====================
+// ==================== ADMIN.JS - MIXMAX MINIMARKET (COMPLET CORRIGÉ) ====================
 // Toutes les variables globales utilisent window. pour compatibilité
 
 // ==================== VARIABLES GLOBALES ====================
@@ -815,4 +815,4 @@ window.navigateTo = navigateTo;
 // (Les fonctions loadCreditsPage, loadCreditsData et applyCreditsFilters
 //  sont définies dans admin-credits.js pour éviter les conflits)
 
-console.log('🏪 E-SOLUTION POS - Admin JS complet (corrigé window.)');
+console.log('☕ Mixmax Minimarket - Admin JS complet (corrigé window.)');
