@@ -8,6 +8,7 @@
 // ✅ SYNCHRONISATION AVEC ADMIN CREDITS : Quand un crédit est payé, la vente devient "Payé"
 // ✅ NOUVEAU CHAMP "RESTANT" DANS LES VENTES
 // ✅ ARTICLES ET OPTIONS VISIBLES POUR TOUT LE MONDE (ADMIN ET CAISSIER)
+// 📴 HORS-LIGNE : Les ventes en attente de sync sont affichées en plus de Firestore
 
 // ========== VARIABLES GLOBALES ==========
 window.commandesSearch = window.commandesSearch || '';
@@ -1518,35 +1519,77 @@ applyVentesFilters();
 return false;
 }
 
+// ============================================================
+// ✅ loadVentes - AVEC FUSION FIRESTORE + LOCALSTORAGE (HORS-LIGNE)
+// ============================================================
 async function loadVentes() {
 var isAdmin = window.currentUserData && window.currentUserData.userData.role === 'admin';
 var vendeurCaissier = '';
 if (!isAdmin && window.currentUserData) {
 vendeurCaissier = window.currentUserData.userData.prenom + ' ' + window.currentUserData.userData.nom;
 }
+
+var ventesFirestore = [];
+var ventesOffline = [];
+
+// 🌐 1) Firestore (si en ligne)
+if (navigator.onLine) {
+    try {
+        const snapshot = await db.collection('ventes').orderBy('createdAt', 'desc').limit(2000).get();
+        snapshot.forEach(dc => {
+            var d = dc.data(); d.id = dc.id;
+            var achat = 0, profit = 0;
+            if (d.items) {
+                d.items.forEach(function(it) {
+                    var pa = it.prixAchat || 0, pv = it.prixVente || 0, pp = it.prixPromo || 0,
+                        pvr = (pp > 0) ? pp : pv, q = it.quantite || 1;
+                    achat += pa * q;
+                    profit += (pvr - pa) * q;
+                });
+            }
+            d.achat = achat; d.profit = profit;
+            ventesFirestore.push(d);
+        });
+    } catch (e) {
+        console.warn('⚠️ Erreur Firestore ventes:', e);
+    }
+}
+
+// 📴 2) Ventes hors-ligne depuis localStorage
 try {
-const snapshot = await db.collection('ventes').orderBy('createdAt', 'desc').limit(2000).get();
-window.allVentesData = [];
-snapshot.forEach(dc => {
-var d = dc.data(); d.id = dc.id;
-var achat = 0, profit = 0;
-if (d.items) {
-d.items.forEach(function(it) {
-var pa = it.prixAchat || 0, pv = it.prixVente || 0, pp = it.prixPromo || 0,
-pvr = (pp > 0) ? pp : pv, q = it.quantite || 1;
-achat += pa * q;
-profit += (pvr - pa) * q;
-});
+    var ventesOfflineRaw = JSON.parse(localStorage.getItem('posVentesOffline') || '[]');
+    ventesOfflineRaw.forEach(function(v) {
+        var dejaPresente = ventesFirestore.some(function(f) { return f.factureNum === v.factureNum; });
+        if (dejaPresente) return;
+
+        var achat = 0, profit = 0;
+        if (v.items) {
+            v.items.forEach(function(it) {
+                var pa = it.prixAchat || 0, pv = it.prixVente || 0, pp = it.prixPromo || 0,
+                    pvr = (pp > 0) ? pp : pv, q = it.quantite || 1;
+                achat += pa * q;
+                profit += (pvr - pa) * q;
+            });
+        }
+        v.achat = achat; v.profit = profit;
+        v._isOffline = true;
+        ventesOffline.push(v);
+    });
+    console.log('📴 Ventes hors-ligne chargées:', ventesOffline.length);
+} catch(e) {
+    console.warn('⚠️ Erreur localStorage ventes:', e);
 }
-d.achat = achat; d.profit = profit;
-window.allVentesData.push(d);
-});
-if (!isAdmin) {
-window.allVentesData = window.allVentesData.filter(function(d) { return d.vendeur === vendeurCaissier; });
+
+// 🔀 3) Fusion
+window.allVentesData = ventesFirestore.concat(ventesOffline);
+
+if (!isAdmin && vendeurCaissier) {
+    window.allVentesData = window.allVentesData.filter(function(d) { return d.vendeur === vendeurCaissier; });
 }
+
 if (!window.sortOrders.ventes) window.sortOrders.ventes = {};
 if (!window.sortOrders.ventes.createdAt) { window.sortOrders.ventes.createdAt = 'desc'; }
-} catch (e) { console.error('Erreur chargement ventes:', e); }
+
 window.currentPages.ventes = 1;
 applyVentesFilters();
 }
@@ -2557,3 +2600,4 @@ console.log('✅ Nouveau champ "Restant" dans les ventes - Diminue avec le paiem
 console.log('✅ Champ "Donné" augmente avec le paiement');
 console.log('✅ Sélection en masse comme admin credits - Bouton "Sélectionner" pour activer/désactiver');
 console.log('✅ Articles et Options visibles pour tout le monde (admin ET caissier)');
+console.log('📴 Fusion Firestore + localStorage : Les ventes hors-ligne sont affichées automatiquement');
