@@ -10,7 +10,6 @@
 // ✅ SYNCHRONISATION AVEC ADMIN VENTES : Quand un crédit est payé, la vente se met à jour
 // ✅ SEUL L'ADMIN PEUT SUPPRIMER - LE CAISSIER N'A PAS LE BOUTON SUPPRIMER
 // ✅ GESTION DES CRÉDITS À 0 MAD : Marqué comme payé automatiquement
-// 📴 HORS-LIGNE : Les crédits en attente de sync sont affichés en plus de Firestore
 
 // ========== VARIABLES GLOBALES ==========
 window.creditsPeriod = window.creditsPeriod || 'all';
@@ -960,9 +959,6 @@ clearBtn.classList.add('hidden');
 }
 }
 
-// ============================================================
-// ✅ loadCredits - AVEC FUSION FIRESTORE + LOCALSTORAGE (HORS-LIGNE)
-// ============================================================
 async function loadCredits() {
 var isAdmin = window.currentUserData && window.currentUserData.userData.role === 'admin';
 var vendeurCaissier = '';
@@ -970,58 +966,46 @@ if (!isAdmin && window.currentUserData) {
 vendeurCaissier = window.currentUserData.userData.prenom + ' ' + window.currentUserData.userData.nom;
 }
 
-var creditsFirestore = [];
-var creditsOffline = [];
+const cached = await CacheDB.getAll('credits');
+if (cached.length) {
+window.allCreditsData = cached;
+if (!isAdmin) {
+window.allCreditsData = window.allCreditsData.filter(function(d) {
+return d.vendeur === vendeurCaissier;
+});
+}
+if (!window.sortOrders.credits) window.sortOrders.credits = {};
+if (!window.sortOrders.credits.createdAt) window.sortOrders.credits.createdAt = 'desc';
+window.currentPages.credits = 1;
+applyCreditsFilters();
+}
 
-// 🌐 1) Firestore (si en ligne)
 if (navigator.onLine) {
-    try {
-        const snapshot = await db.collection('credits').orderBy('createdAt', 'desc').limit(2000).get();
-        snapshot.forEach(function(dc) {
-            var d = dc.data();
-            d.id = dc.id;
-            creditsFirestore.push(d);
-        });
-
-        // Mettre en cache les crédits Firestore
-        for (let doc of creditsFirestore) {
-            await CacheDB.set('credits', doc.id, doc);
-        }
-    } catch (e) {
-        console.error('Erreur chargement crédits Firestore:', e);
-    }
-}
-
-// 📴 2) Crédits hors-ligne depuis localStorage (ventes non payées)
 try {
-    var ventesOfflineRaw = JSON.parse(localStorage.getItem('posVentesOffline') || '[]');
-    ventesOfflineRaw.forEach(function(v) {
-        // ✅ Uniquement les ventes non payées (crédit ou partiel)
-        if (v.paid) return;
-        if (v.statutPaiement !== 'crédit' && v.statutPaiement !== 'partiel' && v.statutPaiement !== 'en_attente') return;
+const snapshot = await db.collection('credits').orderBy('createdAt', 'desc').limit(2000).get();
+window.allCreditsData = [];
+snapshot.forEach(function(dc) {
+var d = dc.data();
+d.id = dc.id;
+window.allCreditsData.push(d);
+});
 
-        var dejaPresente = creditsFirestore.some(function(f) { return f.factureNum === v.factureNum; });
-        if (dejaPresente) return;
-
-        var creditOffline = Object.assign({}, v, { _isOffline: true });
-        creditsOffline.push(creditOffline);
-    });
-    console.log('📴 Crédits hors-ligne chargés:', creditsOffline.length);
-} catch(e) {
-    console.warn('⚠️ Erreur localStorage crédits:', e);
+if (!isAdmin) {
+window.allCreditsData = window.allCreditsData.filter(function(d) {
+return d.vendeur === vendeurCaissier;
+});
 }
 
-// 🔀 3) Fusion
-window.allCreditsData = creditsFirestore.concat(creditsOffline);
-
-if (!isAdmin && vendeurCaissier) {
-    window.allCreditsData = window.allCreditsData.filter(function(d) {
-        return d.vendeur === vendeurCaissier;
-    });
+for (let doc of window.allCreditsData) {
+await CacheDB.set('credits', doc.id, doc);
 }
 
 if (!window.sortOrders.credits) window.sortOrders.credits = {};
 if (!window.sortOrders.credits.createdAt) window.sortOrders.credits.createdAt = 'desc';
+} catch (e) {
+console.error('Erreur chargement crédits:', e);
+}
+}
 
 window.currentPages.credits = 1;
 applyCreditsFilters();
@@ -2341,4 +2325,3 @@ console.log('✅ Synchronisation avec admin ventes : Quand un crédit est payé,
 console.log('✅ Gestion des crédits à 0 MAD : Marqué comme payé automatiquement');
 console.log('✅ ALIAS renderCreditsTable = renderCreditsTablePro (compatibilité admin.js)');
 console.log('✅ changePage NON écrasée (garde la version d\'admin.js)');
-console.log('📴 Fusion Firestore + localStorage : Les crédits hors-ligne sont affichés automatiquement');
