@@ -19,7 +19,7 @@
 // ✅ RÉORGANISATION DES NUMÉROS DE PANIERS (1 À 5)
 // ✅ BARRE CATÉGORIES SLIDE SUPPRIMÉE DÉFINITIVEMENT
 // ✅ BOUTONS TABLES/EN LIGNE MASQUÉS POUR LE CLIENT
-// ✅ MODE HORS-LIGNE : Ventes enregistrées localement et synchronisées automatiquement
+// ✅ MODE HORS-LIGNE PERSISTANT : Vente visible en permanence + sync automatique
 // ⚡ OPTIMISATIONS : cache recherche + content-visibility + batch 30 + debounce 80ms
 
 var posCart = [];
@@ -60,39 +60,32 @@ var posLastRenderTime = 0;
 var isFinalizing = false;
 
 var posProductOffset = 0;
-var posProductBatchSize = 30;   // ⚡ 50 → 30
+var posProductBatchSize = 30;
 var posHasMoreProducts = false;
 
 var clientCreditsCache = {};
 var clientSearchTimeout = null;
 
-// ⚡ CACHE DE RECHERCHE PRODUIT (partagé avec pos-audio.js)
 if (typeof window.posSearchCache === 'undefined') {
     window.posSearchCache = {};
 }
 var posSearchCache = window.posSearchCache;
 
-// ✅ MODE CATÉGORIES / PRODUITS
 var posViewMode = 'categories';
 var posSelectedCategoryForView = null;
 
-// ==================== MULTI-PANIERS AVEC SAUVEGARDE COMPLÈTE ====================
+// ==================== MULTI-PANIERS ====================
 var posMultiCarts = {};
 var posCurrentCartId = 'panier1';
 var posMultiCartCounter = 1;
-
-// ✅ STOCKAGE DES DONNÉES DE CHAQUE PANIER (client, table, paiement, remise, montant donné)
 var posMultiPaniersData = {};
-
-// ✅ LIMITE MAXIMALE DE PANIERS
 var MAX_PANIERS = 5;
 
 // ==================== SYSTÈME DE SYNCHRONISATION HORS-LIGNE ====================
 var POS_PENDING_KEY = 'posPendingSales';
-var POS_SYNC_INTERVAL = 15000; // 15 secondes
+var POS_SYNC_INTERVAL = 15000;
 var posIsSyncing = false;
 
-// ✅ Récupérer la file d'attente
 function posGetPendingSales() {
     try {
         return JSON.parse(localStorage.getItem(POS_PENDING_KEY) || '[]');
@@ -101,7 +94,6 @@ function posGetPendingSales() {
     }
 }
 
-// ✅ Sauvegarder la file d'attente
 function posSavePendingSales(list) {
     try {
         localStorage.setItem(POS_PENDING_KEY, JSON.stringify(list));
@@ -110,7 +102,6 @@ function posSavePendingSales(list) {
     }
 }
 
-// ✅ Ajouter une vente à la file d'attente
 function posAddPendingSale(sale) {
     var list = posGetPendingSales();
     sale._localId = sale._localId || ('local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
@@ -122,7 +113,6 @@ function posAddPendingSale(sale) {
     return sale._localId;
 }
 
-// ✅ Nettoyer les données avant envoi Firestore
 function posCleanSaleData(saleData) {
     var clean = Object.assign({}, saleData);
     delete clean._localId;
@@ -133,13 +123,16 @@ function posCleanSaleData(saleData) {
     delete clean._queuedAt;
     delete clean._createdAt;
     delete clean._linkedVenteId;
+    delete clean._firestoreId;
+    delete clean._syncedAt;
+    delete clean._localCreditId;
     if (!clean.createdAt) {
         clean.createdAt = firebase.firestore.FieldValue.serverTimestamp();
     }
     return clean;
 }
 
-// ✅ Envoyer une vente à Firestore
+// ✅ Envoyer une vente à Firestore - GARDE l'entrée locale pour qu'elle reste visible
 async function posPushSaleToFirestore(saleData, localVenteId, localCreditId) {
     var batch = db.batch();
     var ventesRef = db.collection('ventes').doc();
@@ -153,7 +146,6 @@ async function posPushSaleToFirestore(saleData, localVenteId, localCreditId) {
         batch.set(creditsRef, cleanData);
     }
 
-    // Mettre à jour les stocks
     if (saleData.items && saleData.items.length > 0) {
         for (var i = 0; i < saleData.items.length; i++) {
             var it = saleData.items[i];
@@ -171,35 +163,77 @@ async function posPushSaleToFirestore(saleData, localVenteId, localCreditId) {
 
     await batch.commit();
 
-    // Remplacer l'entrée locale par l'entrée Firestore dans le cache
-    if (typeof CacheDB !== 'undefined' && CacheDB.delete) {
+    // ✅ NE PAS SUPPRIMER l'entrée locale - on la marque comme synchronisée
+    // ainsi elle RESTE visible dans la liste même si la connexion part
+    if (typeof CacheDB !== 'undefined' && CacheDB.get) {
         try {
-            await CacheDB.delete('ventes', localVenteId);
-            if (localCreditId) await CacheDB.delete('credits', localCreditId);
-        } catch(e) { /* ignore */ }
-    }
-
-    var firestoreVente = Object.assign({}, cleanData, { id: ventesRef.id, _synced: true });
-    if (typeof CacheDB !== 'undefined' && CacheDB.set) {
-        await CacheDB.set('ventes', ventesRef.id, firestoreVente);
-        if (creditsRef) {
-            await CacheDB.set('credits', creditsRef.id, Object.assign({}, cleanData, { id: creditsRef.id, _synced: true }));
+            var existingLocal = await CacheDB.get('ventes', localVenteId);
+            if (existingLocal) {
+                var updatedLocal = Object.assign({}, existingLocal, {
+                    _synced: true,
+                    _offline: false,
+                    _firestoreId: ventesRef.id,
+                    _syncedAt: Date.now()
+                });
+                await CacheDB.set('ventes', localVenteId, updatedLocal);
+            }
+        } catch(e) {
+            console.warn('⚠️ Erreur mise à jour locale:', e);
         }
     }
 
-    return { success: true, venteId: ventesRef.id };
+    // Créer aussi l'entrée Firestore pour référence
+    var firestoreVente = Object.assign({}, cleanData, {
+        id: ventesRef.id,
+        _synced: true,
+        _localVenteId: localVenteId
+    });
+    if (typeof CacheDB !== 'undefined' && CacheDB.set) {
+        try {
+            await CacheDB.set('ventes', ventesRef.id, firestoreVente);
+        } catch(e) { /* ignore */ }
+    }
+
+    // Idem pour crédits
+    if (creditsRef && localCreditId) {
+        try {
+            var existingCreditLocal = await CacheDB.get('credits', localCreditId);
+            if (existingCreditLocal) {
+                var updatedCreditLocal = Object.assign({}, existingCreditLocal, {
+                    _synced: true,
+                    _offline: false,
+                    _firestoreId: creditsRef.id,
+                    _syncedAt: Date.now()
+                });
+                await CacheDB.set('credits', localCreditId, updatedCreditLocal);
+            }
+            await CacheDB.set('credits', creditsRef.id, Object.assign({}, cleanData, {
+                id: creditsRef.id,
+                _synced: true,
+                _localCreditId: localCreditId
+            }));
+        } catch(e) { /* ignore */ }
+    }
+
+    // ✅ Sauvegarder dans localStorage
+    if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
+        try {
+            CacheDB.saveCollection('ventes');
+            if (creditsRef) CacheDB.saveCollection('credits');
+        } catch(e) { /* ignore */ }
+    }
+
+    return { success: true, venteId: ventesRef.id, localVenteId: localVenteId };
 }
 
-// ✅ ENREGISTRER UNE VENTE (point d'entrée principal - gère online/offline)
+// ✅ ENREGISTRER UNE VENTE - visible immédiatement + persistante
 async function posEnregistrerVente(saleData) {
-    // Toujours enregistrer en local d'abord (visible dans les listes)
     var localVenteId = 'vente_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     var localCreditId = !saleData.paid ? ('credit_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6)) : null;
 
-    // Sauvegarder dans CacheDB immédiatement
     var localVente = Object.assign({}, saleData, {
         id: localVenteId,
-        _offline: true,
+        _offline: !navigator.onLine,
         _synced: false,
         _createdAt: Date.now(),
         createdAt: { seconds: Math.floor(Date.now() / 1000) }
@@ -207,10 +241,10 @@ async function posEnregistrerVente(saleData) {
 
     if (typeof CacheDB !== 'undefined' && CacheDB.set) {
         await CacheDB.set('ventes', localVenteId, localVente);
-        if (!saleData.paid) {
+        if (!saleData.paid && localCreditId) {
             var localCredit = Object.assign({}, saleData, {
                 id: localCreditId,
-                _offline: true,
+                _offline: !navigator.onLine,
                 _synced: false,
                 _linkedVenteId: localVenteId,
                 _createdAt: Date.now(),
@@ -220,28 +254,33 @@ async function posEnregistrerVente(saleData) {
         }
     }
 
-    // Si en ligne → tenter l'envoi direct
+    if (typeof CacheDB !== 'undefined' && CacheDB.saveCollection) {
+        try {
+            CacheDB.saveCollection('ventes');
+            if (!saleData.paid) CacheDB.saveCollection('credits');
+        } catch(e) { /* ignore */ }
+    }
+
     if (navigator.onLine) {
         try {
             var result = await posPushSaleToFirestore(saleData, localVenteId, localCreditId);
             if (result.success) {
-                console.log('✅ Vente envoyée directement à Firestore:', saleData.factureNum);
-                return { success: true, online: true, venteId: result.venteId, queued: false };
+                console.log('✅ Vente envoyée à Firestore:', saleData.factureNum);
+                return { success: true, online: true, venteId: result.venteId, localVenteId: localVenteId, queued: false };
             }
         } catch(e) {
-            console.warn('⚠️ Échec envoi direct, mise en file:', e.message);
+            console.warn('⚠️ Échec envoi direct:', e.message);
         }
     }
 
-    // Hors ligne ou échec → mettre en file d'attente
     posAddPendingSale({
         saleData: saleData,
         localVenteId: localVenteId,
         localCreditId: localCreditId
     });
 
-    console.log('📴 Vente enregistrée hors-ligne:', saleData.factureNum);
-    return { success: true, online: false, venteId: localVenteId, queued: true };
+    console.log('📴 Vente enregistrée hors-ligne (visible + en file):', saleData.factureNum);
+    return { success: true, online: false, venteId: localVenteId, localVenteId: localVenteId, queued: true };
 }
 
 // ✅ SYNCHRONISER LES VENTES EN ATTENTE
@@ -266,7 +305,6 @@ async function posSyncPendingSales() {
             if (result.success) {
                 successCount++;
 
-                // Mettre à jour le client CA/Profit si payé
                 if (item.saleData.paid && item.saleData.clientId && typeof forceUpdateClient === 'function') {
                     try {
                         await forceUpdateClient(
@@ -306,7 +344,7 @@ async function posSyncPendingSales() {
     }
 }
 
-// ✅ BADGE VISUEL DES VENTES EN ATTENTE
+// ✅ BADGE VISUEL
 function posUpdatePendingBadge() {
     var count = posGetPendingSales().length;
     var badge = document.getElementById('posPendingBadge');
@@ -337,7 +375,6 @@ function posUpdatePendingBadge() {
     }
 }
 
-// ✅ TOAST DE NOTIFICATION
 function posShowToast(msg) {
     var toast = document.getElementById('posSyncToast');
     if (!toast) {
@@ -351,7 +388,6 @@ function posShowToast(msg) {
     setTimeout(function() { toast.style.opacity = '0'; }, 3000);
 }
 
-// ✅ STATUT DE CONNEXION
 function posUpdateOnlineStatus() {
     if (navigator.onLine) {
         console.log('🌐 En ligne - Synchronisation automatique');
@@ -362,19 +398,16 @@ function posUpdateOnlineStatus() {
     posUpdatePendingBadge();
 }
 
-// ✅ INITIALISATION DU SYSTÈME DE SYNC
 function posInitSync() {
     window.addEventListener('online', posUpdateOnlineStatus);
     window.addEventListener('offline', posUpdateOnlineStatus);
 
-    // Sync périodique
     setInterval(function() {
         if (navigator.onLine && posGetPendingSales().length > 0) {
             posSyncPendingSales();
         }
     }, POS_SYNC_INTERVAL);
 
-    // Sync au focus
     window.addEventListener('focus', function() {
         if (navigator.onLine && posGetPendingSales().length > 0) {
             posSyncPendingSales();
@@ -386,7 +419,6 @@ function posInitSync() {
     console.log('📡 Système de synchronisation initialisé');
 }
 
-// Lancer l'init
 posInitSync();
 
 // ======================================================
@@ -490,9 +522,7 @@ btn.style.display = visible ? 'block' : 'none';
 }
 }
 
-// ==================== MULTI-PANIERS - FONCTIONS AVEC SAUVEGARDE COMPLÈTE ====================
-
-// ✅ SAUVEGARDER LES DONNÉES D'UN PANIER (client, table, paiement, etc.)
+// ==================== MULTI-PANIERS ====================
 function posSauvegarderDonneesPanier(cartId) {
     posMultiPaniersData[cartId] = {
         client: posCurrentClient ? { 
@@ -509,7 +539,6 @@ function posSauvegarderDonneesPanier(cartId) {
     };
 }
 
-// ✅ RESTAURER LES DONNÉES D'UN PANIER
 function posRestaurerDonneesPanier(cartId) {
     if (posMultiPaniersData[cartId]) {
         var data = posMultiPaniersData[cartId];
@@ -530,7 +559,6 @@ function posRestaurerDonneesPanier(cartId) {
     return false;
 }
 
-// ✅ CHARGER TOUTES LES DONNÉES DES PANIERS DEPUIS localStorage
 function posChargerToutesDonneesPaniers() {
     try {
         var allData = localStorage.getItem('posMultiPaniersData');
@@ -620,7 +648,6 @@ function posSaveMultiCarts() {
     } catch(e) { console.warn('⚠️ Erreur sauvegarde multi-paniers:', e); }
 }
 
-// ✅ RÉORGANISER LES NUMÉROS DES PANIERS (1 À 5)
 function posReorganiserNumerosPaniers() {
     var cartKeys = Object.keys(posMultiCarts);
     if (cartKeys.length === 0) {
@@ -660,7 +687,6 @@ function posReorganiserNumerosPaniers() {
     posSaveMultiCarts();
 }
 
-// ✅ CRÉER UN NOUVEAU PANIER - AVEC LIMITE DE 5 ET RÉUTILISATION DES NUMÉROS
 function posCreateNewCart() {
     posMultiCarts[posCurrentCartId] = posCart.slice();
     posSauvegarderDonneesPanier(posCurrentCartId);
@@ -713,7 +739,6 @@ function posCreateNewCart() {
     return newCartId;
 }
 
-// ✅ CHANGER DE PANIER - VERSION FLUIDE CORRIGÉE
 function posSwitchToCart(cartId) {
     if (!posMultiCarts[cartId]) { 
         console.warn('⚠️ Panier inexistant:', cartId); 
@@ -763,7 +788,6 @@ function posSwitchToCart(cartId) {
     console.log('🔄 Basculé vers:', cartId, 'articles:', posCart.length);
 }
 
-// ✅ SUPPRIMER UN PANIER - AVEC RÉORGANISATION DES NUMÉROS
 function posDeleteCart(cartId) {
     console.log('🗑️ Tentative de suppression du panier:', cartId);
     
@@ -830,7 +854,6 @@ function posDeleteCart(cartId) {
     console.log('✅ Panier supprimé:', cartId, 'Paniers restants:', Object.keys(posMultiCarts).length);
 }
 
-// ✅ VIDER TOUS LES PANIERS
 function posResetAllCarts() {
     if (!confirm('⚠️ Vider TOUS les paniers ? Cette action est irréversible.')) return;
     posMultiCarts = { 'panier1': [] };
@@ -862,7 +885,7 @@ function posGetTotalAllCarts() {
     return total;
 }
 
-// ==================== OPTIMISATION : PRÉCHARGEMENT DU POS ====================
+// ==================== PRÉCHARGEMENT POS ====================
 async function preloadPosData() {
 if (typeof CacheDB === 'undefined') return;
 
@@ -880,10 +903,9 @@ console.warn('Erreur préchargement POS:', e);
 }
 }
 
-// Lancer le préchargement immédiatement
 preloadPosData();
 
-// ==================== TOGGLE OUTILS POS - CORRIGÉ AVEC DESIGN MODERNE ====================
+// ==================== TOGGLE OUTILS POS ====================
 function posToggleTools() {
     posToolsVisible = !posToolsVisible;
     var toolsContainer = document.getElementById('posToolsContainer');
@@ -957,7 +979,6 @@ function posToggleTools() {
     }
 }
 
-// ==================== APPLIQUER LE SCROLL SUR DYNAMICCONTENT ====================
 function applyDynamicContentScroll() {
 var container = document.getElementById('dynamicContent');
 if (container) {
@@ -991,7 +1012,6 @@ return 0;
 }
 }
 
-// ✅ VERSION MODIFIÉE : affichage crédit cliquable - REDIRECTION VERS PAGE CRÉDITS AVEC SAUVEGARDE D'ÉTAT
 async function updateClientCreditDisplay(clientId) {
 var displayEl = document.getElementById('clientCreditDisplay');
 if (!displayEl) return;
@@ -1045,12 +1065,11 @@ displayEl.onclick = null;
 }
 
 // ============================================================
-// ✅ loadPosPage - VERSION CORRIGÉE AVEC RESTAURATION AVANT RESET
+// ✅ loadPosPage
 // ============================================================
 async function loadPosPage(c){
 applyDynamicContentScroll();
 
-// ✅ Charger les multi-paniers et leurs données
 posChargerToutesDonneesPaniers();
 posLoadMultiCarts();
 
@@ -1088,10 +1107,6 @@ posDiscountMAD = restoredState.discountMAD || 0;
 posAmountGiven = restoredState.amountGiven || 0;
 
 console.log('✅ État POS restauré avec succès');
-console.log('📦 Panier:', posCart.length, 'articles');
-console.log('👤 Client:', posCurrentClient ? posCurrentClient.name : 'Aucun');
-console.log('💳 Mode paiement:', posPaymentMethod);
-console.log('💰 Montant donné:', posAmountGiven);
 }
 
 posCommandesFilterText=''; posCommandesSortField='createdAt'; posCommandesSortOrder='desc'; posSearchQuery=''; productIndexBuilt=false; posProductOffset=0; posToolsVisible=false;
@@ -1200,7 +1215,6 @@ if (typeof window.updatePaymentButtons === 'function') window.updatePaymentButto
 }
 }
 
-// ⚡ OPTIMISATION : debounce 80ms + cache
 function posSearchProducts(query){
 clearTimeout(window._searchTimeout);
 window._searchTimeout = setTimeout(function(){
@@ -1212,7 +1226,6 @@ posViewMode = 'products';
 posSelectedCategoryForView = null;
 }
 
-// ⚡ OPTIMISATION : pré-remplir le cache (partagé avec pos-audio.js)
 if (posSearchQuery.length > 0 && !posSearchCache[posSearchQuery]) {
     if (typeof fastSearch === 'function') {
         posSearchCache[posSearchQuery] = fastSearch(posSearchQuery).slice();
@@ -1220,7 +1233,7 @@ if (posSearchQuery.length > 0 && !posSearchCache[posSearchQuery]) {
 }
 
 if(isOnPOSPage()) filterProductGrid();
-}, 80);   // ⚡ 150ms → 80ms
+}, 80);
 }
 
 function clearPosSearch() {
@@ -1258,7 +1271,6 @@ if (clearBtn) clearBtn.style.display = 'none';
 
 function loadMoreProducts(){ posProductOffset+=posProductBatchSize; filterProductGrid(); }
 
-// ==================== FILTER PRODUCT GRID AVEC MODE CATÉGORIES ====================
 function filterProductGrid(){
 if(!isOnPOSPage() || posStep !== 1) return;
 
@@ -1270,7 +1282,6 @@ afficherCategories(grid);
 return;
 }
 
-// ⚡ OPTIMISATION : utiliser le cache si disponible
 var f;
 if (posSearchCache[posSearchQuery]) {
     f = posSearchCache[posSearchQuery].slice();
@@ -1370,7 +1381,6 @@ imgContent = '<img src="' + escapeHtml(p.imageBase64) + '" loading="lazy" alt=""
 imgContent = '<i class="fas fa-box" style="' + (isMobile ? 'font-size:18px;color:var(--text-muted);' : 'font-size:26px;color:var(--text-muted);') + '"></i>';
 }
 
-// ⚡ OPTIMISATION : content-visibility auto sur les cartes
 html += '<div class="pos-product-card ' + sc + '" style="' + cardStyle + 'content-visibility:auto;contain-intrinsic-size:150px 150px;" onclick="posAddToCartOrOpenOptions(\'' + p.id + '\')">' +
 '<div class="pos-product-img" style="' + imgStyle + '">' + imgContent + '</div>' +
 '<div class="pos-product-info" style="display:flex;flex-direction:column;align-items:center;width:100%;flex:1;justify-content:center;overflow:hidden;min-height:0;">' +
@@ -1392,7 +1402,6 @@ grid.innerHTML = html;
 updateClearButtonVisibility();
 }
 
-// ==================== AFFICHER LES CATÉGORIES - VERSION CORRIGÉE ====================
 function afficherCategories(grid) {
 var isMobile = window.innerWidth < 700;
 var isTablette = window.innerWidth >= 700 && window.innerWidth <= 1024;
@@ -1507,7 +1516,6 @@ html += '<div class="pos-category-card" data-cat-name="' + escapeHtml(cat.nom) +
 grid.innerHTML = html;
 }
 
-// ==================== SÉLECTIONNER UNE CATÉGORIE - AVEC TEXTE NOIR SUR FOND BLANC ====================
 function selectionnerCategorie(catName) {
 document.querySelectorAll('.pos-category-card').forEach(function(card) {
 card.classList.remove('active');
@@ -1548,7 +1556,6 @@ filterProductGrid();
 }
 }
 
-// ==================== RETOURNER AUX CATÉGORIES ====================
 function retournerCategories() {
 document.querySelectorAll('.pos-category-card').forEach(function(card) {
 card.classList.remove('active');
@@ -1575,7 +1582,6 @@ filterProductGrid();
 }
 }
 
-// ⚡ OPTIMISATION : cache de recherche client
 function posSearchClient(query){
 var q = query.toLowerCase().trim();
 posCurrentClient = null;
@@ -1592,7 +1598,6 @@ return;
 }
 if (clearBtn) clearBtn.style.display = 'flex';
 
-// ⚡ OPTIMISATION : cache de recherche client
 if (typeof window.clientSearchCache === 'undefined') {
     window.clientSearchCache = {};
 }
@@ -1925,7 +1930,6 @@ console.error('❌ Erreur récupération produit:', err);
 });
 }
 
-// ==================== updateCartOnly - NOM SUR UNE LIGNE ====================
 function updateCartOnly(){
 if(!isOnPOSPage()) return;
 var ci=document.querySelector('.pos-cart-items');
@@ -1999,7 +2003,6 @@ return;
 buildFullPOS(c);
 }
 
-// ==================== buildFullPOS AVEC HAUTEURS CORRIGÉES ET DESIGN MODERNE ====================
 function buildFullPOS(c){
 if(posProductsList.length===0&&posCategoriesList.length===0){ c.innerHTML='<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:#14B8A6;"></i><p>Chargement...</p></div>'; return; }
 var st=posCalculateTotal(),t=st-posDiscountMAD;
@@ -2022,7 +2025,6 @@ var stepIndicator = '<div class="pos-steps-nav" style="display:flex; justify-con
 '</div>' +
 '</div>';
 
-// ==================== BARRE MULTI-PANIERS AVEC NOM DU CLIENT - VERSION AMÉLIORÉE ====================
 var multiCartBar = '<div class="pos-multi-carts-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);margin-bottom:4px;">';
 
 var cartCount = Object.keys(posMultiCarts).length;
@@ -2121,7 +2123,6 @@ multiCartBar +
 '</div>' +
 '</div>' +
 
-// ⚡ OPTIMISATION : content-visibility sur la grille
 '<div class="pos-products-grid" id="posProductGrid" style="grid-template-columns:'+gridCols+';gap:'+gridGap+';padding:'+gridPadding+';overflow-x:hidden;overflow-y:auto;flex-wrap:wrap;align-content:start;flex:1;contain:layout paint;content-visibility:auto;"></div>' +
 '</div>' +
 
@@ -2261,7 +2262,6 @@ setStaticBackButtonVisibility(true);
 if (posCurrentClient && posCurrentClient.id) {
 updateClientCreditDisplay(posCurrentClient.id);
 }
-// 🔥 CORRECTION : réinitialiser le mode quantité AVANT de passer en mode paiement
 if (typeof window.resetVoiceQuantityMode === 'function') {
     window.resetVoiceQuantityMode();
 }
@@ -2323,7 +2323,7 @@ return false;
 }
 }
 
-// ==================== posFinalizeSale - VERSION AVEC MODE HORS-LIGNE ====================
+// ==================== posFinalizeSale - VERSION AVEC MODE HORS-LIGNE PERSISTANT ====================
 async function posFinalizeSale(){
 if(posCart.length === 0){
 alert('❌ Le panier est vide. Ajoutez des articles avant de finaliser.');
@@ -2358,7 +2358,6 @@ profitTotal+=prof;
 return {id:it.id, nom:it.nom, quantite:it.quantite, prixVente:pvr, prixAchat:pa, prixPromo:pp, profit:prof, sauces:[], interdits:it.interdits||[], epice:it.epice||'Normal', sel:it.sel||'Normal'};
 });
 
-// ✅ Construire les données SANS createdAt (posCleanSaleData s'en occupe)
 var sd = {
 factureNum: fn,
 items: itemsDetail,
@@ -2378,11 +2377,10 @@ remainingAmount: remaining,
 profitTotal: profitTotal
 };
 
-// ✅ Utiliser posEnregistrerVente (gère online/offline automatiquement)
 var result = await posEnregistrerVente(sd);
 var venteId = result.venteId;
 
-// ✅ Mettre à jour les stocks localement (CacheDB)
+// ✅ Mettre à jour les stocks localement
 for(var i=0;i<posCart.length;i++){
 var it = posCart[i];
 if (typeof CacheDB !== 'undefined' && CacheDB.get) {
@@ -2398,7 +2396,7 @@ await CacheDB.set('products', it.id, prod);
 }
 }
 
-// ✅ Mettre à jour le client si payé ET en ligne (sinon sera fait à la sync)
+// ✅ Mettre à jour le client si payé ET en ligne
 if(posCurrentClient && posCurrentClient.id && paid && result.online) {
 try {
 await forceUpdateClient(posCurrentClient.id, t, profitTotal);
@@ -2412,7 +2410,7 @@ if (posCurrentClient && posCurrentClient.id) {
 clientCreditsCache[posCurrentClient.id] = undefined;
 }
 
-// ✅ Gérer commande/vente existantes (seulement si en ligne)
+// ✅ Gérer commande/vente existantes
 if(result.online) {
 if(window.posCommandeId){
 try {
@@ -2440,7 +2438,6 @@ delete window.posVenteId;
 
 localStorage.removeItem('posSavedState');
 
-// ✅ Message selon le mode
 if (result.queued) {
 posShowToast('📴 Vente enregistrée hors-ligne');
 } else {
@@ -2564,7 +2561,7 @@ btn.style.display = (input.value && input.value.length > 0) ? 'flex' : 'none';
 
 function goBackToPOS(){ if(window.currentUserData&&(window.currentUserData.userData.role==='caissier'||window.currentUserData.userData.role==='admin')){ if(posCart.length>0&&posStep===1){ if(!confirm('⚠️ '+posCart.length+' article(s) dans le panier. Garder ?')) posResetCart(); } navigateTo('pos'); } }
 
-// ==================== AJOUT RAPIDE D'UN NOUVEAU CLIENT (COMPATIBLE ADMIN-CRUD) ====================
+// ==================== AJOUT RAPIDE D'UN NOUVEAU CLIENT ====================
 function posAjouterNouveauClient() {
     var modalHtml = `
         <div style="padding:10px;">
@@ -2741,7 +2738,7 @@ async function posConfirmerAjoutClient() {
     }
 }
 
-// ==================== CORRECTION MOBILE PANIER EN BAS ====================
+// ==================== CORRECTION MOBILE ====================
 function corrigerDispositionMobile() {
 if (window.innerWidth <= 700) {
 var row = document.querySelector('.pos-row');
@@ -2797,7 +2794,6 @@ window.posToolsVisible = posToolsVisible;
 window.applyDynamicContentScroll = applyDynamicContentScroll;
 window.forceUpdateClient = forceUpdateClient;
 window.corrigerDispositionMobile = corrigerDispositionMobile;
-// Multi-paniers
 window.posMultiCarts = posMultiCarts;
 window.posCurrentCartId = posCurrentCartId;
 window.posMultiCartCounter = posMultiCartCounter;
@@ -2813,10 +2809,8 @@ window.posGetTotalAllCarts = posGetTotalAllCarts;
 window.posSauvegarderDonneesPanier = posSauvegarderDonneesPanier;
 window.posRestaurerDonneesPanier = posRestaurerDonneesPanier;
 window.posChargerToutesDonneesPaniers = posChargerToutesDonneesPaniers;
-// Ajout rapide client
 window.posAjouterNouveauClient = posAjouterNouveauClient;
 window.posConfirmerAjoutClient = posConfirmerAjoutClient;
-// ✅ Synchronisation hors-ligne
 window.posEnregistrerVente = posEnregistrerVente;
 window.posSyncPendingSales = posSyncPendingSales;
 window.posGetPendingSales = posGetPendingSales;
@@ -2836,5 +2830,5 @@ console.log('✅ LIMITE À ' + MAX_PANIERS + ' PANIERS MAXIMUM');
 console.log('✅ NAVIGATION FLUIDE ENTRE PANIERS AVEC RE-RENDU COMPLET');
 console.log('✅ SUPPRESSION IMMÉDIATE DES PANIERS AVEC RE-RENDU COMPLET');
 console.log('✅ RÉORGANISATION DES NUMÉROS DE PANIERS (1 À ' + MAX_PANIERS + ')');
-console.log('✅ MODE HORS-LIGNE : Ventes synchronisées automatiquement au retour de la connexion');
+console.log('✅ MODE HORS-LIGNE PERSISTANT : Vente toujours visible + sync automatique');
 console.log('⚡ OPTIMISATIONS : cache recherche + content-visibility + batch 30 + debounce 80ms');
