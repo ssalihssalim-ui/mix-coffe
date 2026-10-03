@@ -163,20 +163,115 @@ Contenu du modal
 
 <script>
 if ('serviceWorker' in navigator) {
-navigator.serviceWorker.register('sw.js').then(reg => console.log('SW ✓', reg)).catch(err => console.error('SW ✗', err));
+    navigator.serviceWorker.register('sw.js').then(reg => console.log('SW ✓', reg)).catch(err => console.error('SW ✗', err));
 }
 
-// Sauvegarde automatique au chargement de l'application
+// ============================================================
+// 📴 DÉTECTION HORS-LIGNE + SYNCHRONISATION AUTOMATIQUE
+// ============================================================
+(function() {
+    function createOfflineIndicator() {
+        var indicator = document.createElement('div');
+        indicator.id = 'globalConnectionIndicator';
+        indicator.style.cssText = `
+            position: fixed; top: 10px; right: 10px; z-index: 99999;
+            padding: 8px 14px; border-radius: 20px; font-size: 0.8rem;
+            font-weight: 700; font-family: sans-serif; display: flex;
+            align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: all 0.3s; pointer-events: none;
+        `;
+        document.body.appendChild(indicator);
+        return indicator;
+    }
+
+    function updateIndicator() {
+        var indicator = document.getElementById('globalConnectionIndicator') || createOfflineIndicator();
+        var countOffline = 0;
+        try {
+            countOffline = JSON.parse(localStorage.getItem('posVentesOffline') || '[]').length;
+        } catch(e) {}
+
+        if (!navigator.onLine) {
+            indicator.style.background = '#FEE2E2';
+            indicator.style.color = '#991B1B';
+            indicator.innerHTML = '📴 Hors-ligne' + (countOffline > 0 ? ' — ' + countOffline + ' vente(s) en attente' : '');
+            indicator.style.opacity = '1';
+        } else if (countOffline > 0) {
+            indicator.style.background = '#FEF3C7';
+            indicator.style.color = '#92400E';
+            indicator.innerHTML = '⏳ ' + countOffline + ' vente(s) à synchroniser';
+            indicator.style.opacity = '1';
+        } else {
+            indicator.style.background = '#D1FAE5';
+            indicator.style.color = '#065F46';
+            indicator.innerHTML = '✅ En ligne';
+            setTimeout(function() {
+                if (indicator && navigator.onLine && countOffline === 0) {
+                    indicator.style.opacity = '0.3';
+                }
+            }, 3000);
+        }
+    }
+
+    async function syncVentesOffline() {
+        if (!navigator.onLine) return;
+        // ✅ Attendre que posSyncVentesOffline soit définie (chargement de pos.js)
+        if (typeof window.posSyncVentesOffline !== 'function') {
+            console.warn('⚠️ posSyncVentesOffline pas encore prête, retry dans 2s...');
+            setTimeout(syncVentesOffline, 2000);
+            return;
+        }
+        try {
+            await window.posSyncVentesOffline();
+        } catch(e) {
+            console.warn('⚠️ Erreur sync ventes:', e);
+        }
+        updateIndicator();
+    }
+
+    window.addEventListener('online', function() {
+        console.log('🌐 Connexion rétablie — Lancement de la synchronisation...');
+        updateIndicator();
+        // ✅ Attendre 1.5s que Firebase soit prêt
+        setTimeout(syncVentesOffline, 1500);
+    });
+
+    window.addEventListener('offline', function() {
+        console.log('📴 Connexion perdue — mode hors-ligne activé');
+        updateIndicator();
+    });
+
+    setInterval(function() {
+        if (navigator.onLine) {
+            syncVentesOffline();
+        }
+        updateIndicator();
+    }, 30000);
+
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            updateIndicator();
+            if (navigator.onLine) {
+                syncVentesOffline();
+            }
+        }, 2500); // ✅ Attendre que pos.js soit chargé
+    });
+
+    window.updateOfflineIndicator = updateIndicator;
+    window.syncVentesOffline = syncVentesOffline;
+})();
+
+// ✅ Sauvegarde automatique au chargement de l'application
 window.addEventListener('load', function() {
-setTimeout(function() {
-if (typeof CacheDB !== 'undefined' && CacheDB.saveAll) {
-console.log('💾 Sauvegarde initiale des données...');
-CacheDB.saveAll();
-if (typeof CacheDB.setupRealtime === 'function') {
-CacheDB.setupRealtime();
-}
-}
-}, 2000);
+    setTimeout(function() {
+        if (typeof CacheDB !== 'undefined' && CacheDB.saveAll) {
+            console.log('💾 Sauvegarde initiale des données...');
+            CacheDB.saveAll();
+            if (typeof CacheDB.setupRealtime === 'function') {
+                CacheDB.setupRealtime();
+            }
+        }
+    }, 2000);
 });
 </script>
 
